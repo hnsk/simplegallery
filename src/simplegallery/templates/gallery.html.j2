@@ -13,6 +13,9 @@
 {% endfor %}
 </ul>
 {% endif %}
+{% if subgalleries or items %}
+<aside class="gallery-controls" aria-label="Sort"><label>Sort by <select class="gc-key" name="sort-key"><option value="name" selected>Name</option><option value="date">Date</option></select></label><label>Order <select class="gc-order" name="sort-order"><option value="asc" selected>Ascending</option><option value="desc">Descending</option></select></label></aside>
+{% endif %}
 {% if items %}
 <div class="gallery-grid" data-gallery="{{ gallery.slug }}">
 {% for item in items %}
@@ -20,9 +23,6 @@
 <figure id="m-{{ item.slug }}" data-slug="{{ item.slug }}" data-name="{{ item.name }}" data-kind="{{ item.kind }}" data-mtime="{{ item.mtime }}" data-thumb="{{ item.thumb }}"{% if item.src %} data-src="{{ item.src }}"{% endif %}{% if item.original %} data-original="{{ item.original }}"{% endif %}{% if item.mp4 %} data-mp4="{{ item.mp4 }}"{% endif %}{% if item.webm %} data-webm="{{ item.webm }}"{% endif %}{% if item.exif %} data-exif='{{ item.exif }}'{% endif %}><a class="gallery-link" href="{{ link_href }}" aria-label="{{ item.name }}"><img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy"></a></figure>
 {% endfor %}
 </div>
-{% endif %}
-{% if subgalleries or items %}
-<aside class="gallery-controls" aria-label="Sort"><label>Sort by <select class="gc-key" name="sort-key"><option value="name" selected>Name</option><option value="date">Date</option></select></label><label>Order <select class="gc-order" name="sort-order"><option value="asc" selected>Ascending</option><option value="desc">Descending</option></select></label></aside>
 {% endif %}
 </main>
 {% endblock %}
