@@ -78,7 +78,7 @@
     root.innerHTML =
       '<div class="lightbox-stage">' +
         '<button type="button" class="lightbox-btn lightbox-close" aria-label="Close">×</button>' +
-        '<button type="button" class="lightbox-btn lightbox-info" aria-label="Toggle EXIF">i</button>' +
+        '<button type="button" class="lightbox-btn lightbox-info" aria-label="Toggle EXIF">EXIF</button>' +
         '<a class="lightbox-btn lightbox-download" aria-label="Download original" download hidden>↓</a>' +
         '<button type="button" class="lightbox-btn lightbox-prev" aria-label="Previous">‹</button>' +
         '<button type="button" class="lightbox-btn lightbox-next" aria-label="Next">›</button>' +

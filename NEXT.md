@@ -1,6 +1,18 @@
 # NEXT
 
-Step 10 in progress — `/web` web-root layout with originals served directly + recursive galleries.
+Step 11 — lightbox UX polish (in progress).
+
+- EXIF toggle: button text `i` → `EXIF` for clarity; moved from top-left to top-right next to close X. Download anchor bumped to `right: 8.5rem` to clear it.
+- EXIF panel was covering close X + right arrow when open. Fix: `.lightbox-stage:has(.exif-panel[data-open="true"]) .lightbox-{close,info,download,next}` shifts those buttons left by the 320px panel width on desktop (≥769px). Mobile bottom sheet path untouched.
+- `.lightbox-btn` transition now also animates `right` for the slide.
+
+Files: `src/simplegallery/static/gallery.js`, `src/simplegallery/static/gallery.css`. Verified: `docker compose run --rm test tests/test_frontend_assets.py` (5 pass) + rebuilt `./web/` via `docker compose run --rm app -v`. New asset hashes minted (`gallery.<hash>.{css,js}`).
+
+Open from earlier (still applies): manual browser pass on freshly-built `./web/` (arrows, EXIF toggle now adjacent to X, download, video poster), mobile viewport check (DevTools), HEIC libheif time-limit on `shelf-christmas-decoration.heic`.
+
+---
+
+Step 10 — `/web` web-root layout with originals served directly + recursive galleries.
 
 Completed substeps:
 

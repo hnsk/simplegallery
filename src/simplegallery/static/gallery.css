@@ -252,7 +252,7 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, right 0.18s ease;
 }
 
 .lightbox-btn:hover,
@@ -265,15 +265,30 @@ video.lightbox-media {
 .lightbox-prev { left: 1rem; top: 50%; transform: translateY(-50%); }
 .lightbox-next { right: 1rem; top: 50%; transform: translateY(-50%); }
 .lightbox-close { right: 1rem; top: 1rem; }
-.lightbox-info { left: 1rem; top: 1rem; }
-.lightbox-download {
+.lightbox-info {
   right: 4rem;
+  top: 1rem;
+  width: auto;
+  padding: 0 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.lightbox-download {
+  right: 8.5rem;
   top: 1rem;
   text-decoration: none;
   font-size: 1.5rem;
   font-weight: 700;
 }
 .lightbox-download[hidden] { display: none; }
+
+@media (min-width: 769px) {
+  .lightbox-stage:has(.exif-panel[data-open="true"]) .lightbox-close { right: calc(320px + 1rem); }
+  .lightbox-stage:has(.exif-panel[data-open="true"]) .lightbox-info { right: calc(320px + 4rem); }
+  .lightbox-stage:has(.exif-panel[data-open="true"]) .lightbox-download { right: calc(320px + 8.5rem); }
+  .lightbox-stage:has(.exif-panel[data-open="true"]) .lightbox-next { right: calc(320px + 1rem); }
+}
 
 /* --- EXIF panel --- */
 

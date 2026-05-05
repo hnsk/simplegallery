@@ -90,6 +90,11 @@
 - [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up
 - [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` (substitute another HEIC sample, or accept as known sample-data quirk)
 
+## Step 11 — Lightbox UX polish
+- [x] EXIF toggle button: relabel `i` → `EXIF`, move to top-right next to close X (`right: 4rem`); push download anchor to `right: 8.5rem`.
+- [x] EXIF panel open: shift top-right buttons (close, EXIF, download, next-arrow) left by panel width via `:has(.exif-panel[data-open="true"])` so panel doesn't cover them; desktop only (≥769px), mobile sheet unaffected.
+- [x] `.lightbox-btn` transition extended to animate `right` change.
+
 ## Step 10 — Web-root layout + recursive galleries + originals-as-full
 
 Goal: single `/web` mount. Source lives at `/web/<gallery_subdir>/` (default `gallery`). Output assets/HTML/derivatives live at `/web/`. Originals served directly as full-size for browser-friendly formats (no JPEG re-encode). HEIC/HEIF/TIFF get a JPEG derivative + original kept downloadable. Galleries nest arbitrarily; every gallery dir gets its own page (subgallery cards first, then media). We own `/web/` root; anything user puts there outside `<gallery_subdir>/` = user error.
