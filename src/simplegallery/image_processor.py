@@ -1,25 +1,37 @@
 """Image processing: thumbnails, full-size derivatives, EXIF extraction.
 
-Backed by Wand (ImageMagick + libheif). EXIF read uses Wand's metadata first and
-falls back to exifread for formats / tags Wand misses.
+Backed by Wand (ImageMagick + libheif). Camera RAW (NEF/CR2/CR3/ARW/RAF/DNG/...)
+goes through libraw's ``dcraw_emu`` first — it produces a half-size, white-
+balanced sRGB TIFF on stdout which Wand then reads as a normal TIFF blob. This
+avoids relying on an IM raw delegate (Alpine's IM build has none) and gives
+deterministic, decoder-correct results regardless of the RAW container's
+TIFF-magic-byte mimicry.
+
+EXIF read uses Wand's metadata first and falls back to exifread for formats /
+tags Wand misses. For RAW files the wand path is expected to fail (no decoder
+for the original container); exifread reads tags from the RAW directly.
 
 Privacy note on GPS metadata: ``generate_full`` strips EXIF GPS tags from the
 JPEG derivative it produces. Derivatives are only generated for formats that
-need transcoding (HEIC/HEIF/TIFF). Browser-friendly originals (jpg/jpeg/png/
-webp/gif/avif) are served directly from ``<gallery_subdir>/`` without
-modification, so any GPS tags they carry remain in the file the visitor
+need transcoding (HEIC/HEIF/TIFF + camera RAW). Browser-friendly originals
+(jpg/jpeg/png/webp/gif/avif) are served directly from ``<gallery_subdir>/``
+without modification, so any GPS tags they carry remain in the file the visitor
 downloads. Strip GPS upstream if that matters for the source set.
 """
 
 from __future__ import annotations
 
 import logging
+import subprocess
+from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
-from typing import Mapping
+from typing import Iterator, Mapping
 
 import exifread
 from wand.image import Image
+
+from .config import RAW_IMAGE_EXTENSIONS
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +41,49 @@ THUMB_QUALITY = 80
 FULL_QUALITY = 92
 
 _GPS_PREFIX = "exif:GPS"
+
+# libraw CLI used to demosaic camera RAW into TIFF. ``-h`` half-size demosaic
+# (≥9 MP from a 36 MP sensor — plenty for any web gallery, ~10× faster than
+# full demosaic), ``-T`` TIFF output, ``-Z -`` write to stdout, ``-w`` apply
+# camera white balance (otherwise the result is grey-cast).
+_DCRAW_EMU = "dcraw_emu"
+_DCRAW_EMU_ARGS: tuple[str, ...] = ("-h", "-T", "-w", "-Z", "-")
+
+
+def _is_raw(src: Path) -> bool:
+    return src.suffix.lower() in RAW_IMAGE_EXTENSIONS
+
+
+def _read_raw_tiff(src: Path) -> bytes:
+    """Demosaic a camera RAW via libraw and return the TIFF bytes."""
+    try:
+        proc = subprocess.run(
+            [_DCRAW_EMU, *_DCRAW_EMU_ARGS, str(src)],
+            check=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"{_DCRAW_EMU} not on PATH — install libraw-tools to decode camera RAW"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", "replace").strip()
+        raise RuntimeError(f"{_DCRAW_EMU} failed for {src}: {stderr}") from exc
+    if not proc.stdout:
+        raise RuntimeError(f"{_DCRAW_EMU} produced empty output for {src}")
+    return proc.stdout
+
+
+@contextmanager
+def _open_image(src: Path) -> Iterator[Image]:
+    """Yield a Wand ``Image`` for ``src``, transparently handling camera RAW."""
+    if _is_raw(src):
+        blob = _read_raw_tiff(src)
+        with Image(blob=blob, format="tiff") as img:
+            yield img
+    else:
+        with Image(filename=str(src)) as img:
+            yield img
 
 # Map source EXIF keys → display label. Wand keys come as "exif:Make"; exifread
 # tag names come as "Image Make" / "EXIF FNumber" / etc.
@@ -47,7 +102,7 @@ _DISPLAY_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 def generate_thumbnail(src: Path, dst: Path) -> None:
     """Write a 400×300 WebP crop-fill thumbnail. Auto-oriented."""
     dst.parent.mkdir(parents=True, exist_ok=True)
-    with Image(filename=str(src)) as img:
+    with _open_image(src) as img:
         img.auto_orient()
         _crop_fill(img, THUMB_WIDTH, THUMB_HEIGHT)
         img.strip()
@@ -59,7 +114,7 @@ def generate_thumbnail(src: Path, dst: Path) -> None:
 def generate_full(src: Path, dst: Path) -> None:
     """Write an auto-oriented JPEG with GPS metadata removed, camera tags kept."""
     dst.parent.mkdir(parents=True, exist_ok=True)
-    with Image(filename=str(src)) as img:
+    with _open_image(src) as img:
         img.auto_orient()
         for key in [k for k in img.metadata.keys() if k.startswith(_GPS_PREFIX)]:
             try:
@@ -104,6 +159,9 @@ def _crop_fill(img: Image, target_w: int, target_h: int) -> None:
 
 
 def _read_with_wand(src: Path) -> dict[str, str]:
+    # RAW originals have no IM coder — skip and let exifread do the work.
+    if _is_raw(src):
+        return {}
     try:
         with Image(filename=str(src)) as img:
             return {k: str(v) for k, v in img.metadata.items() if v}

@@ -130,6 +130,100 @@ def test_heic_full_converts_to_jpeg(heic_sample: Path, tmp_path: Path) -> None:
         assert img.format.upper() == "JPEG"
 
 
+# --- camera RAW (NEF/CR2/ARW/RAF/DNG/...) ---------------------------------
+
+
+_RAW_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("RAWs/*.NEF", "Nikon NEF"),
+    ("RAWs/*.nef", "Nikon NEF"),
+    ("RAWs/*.CR2", "Canon CR2"),
+    ("RAWs/*.cr2", "Canon CR2"),
+    ("RAWs/*.CR3", "Canon CR3"),
+    ("RAWs/*.cr3", "Canon CR3"),
+    ("RAWs/*.CRW", "Canon CRW"),
+    ("RAWs/*.crw", "Canon CRW"),
+    ("RAWs/*.ARW", "Sony ARW"),
+    ("RAWs/*.arw", "Sony ARW"),
+    ("RAWs/*.RAF", "Fujifilm RAF"),
+    ("RAWs/*.raf", "Fujifilm RAF"),
+    ("RAWs/*.DNG", "Adobe DNG"),
+    ("RAWs/*.dng", "Adobe DNG"),
+    ("RAWs/*.ORF", "Olympus ORF"),
+    ("RAWs/*.orf", "Olympus ORF"),
+    ("RAWs/*.RW2", "Panasonic RW2"),
+    ("RAWs/*.rw2", "Panasonic RW2"),
+)
+
+
+def _raw_samples() -> list[Path]:
+    """Return one sample per available RAW format under sample-data/RAWs/."""
+    if not SAMPLE_DIR.is_dir():
+        return []
+    seen_exts: set[str] = set()
+    out: list[Path] = []
+    for pat, _ in _RAW_PATTERNS:
+        for p in sorted(SAMPLE_DIR.glob(pat)):
+            ext = p.suffix.lower()
+            if ext in seen_exts or not p.is_file():
+                continue
+            seen_exts.add(ext)
+            out.append(p)
+            break
+    return out
+
+
+@pytest.fixture(params=_raw_samples(), ids=lambda p: p.name)
+def raw_sample(request: pytest.FixtureRequest) -> Path:
+    return request.param
+
+
+def test_raw_thumbnail_decodes(raw_sample: Path, tmp_path: Path) -> None:
+    dst = tmp_path / f"{raw_sample.stem}_thumb.webp"
+    generate_thumbnail(raw_sample, dst)
+    assert dst.is_file()
+    with WandImage(filename=str(dst)) as img:
+        assert img.width == THUMB_WIDTH
+        assert img.height == THUMB_HEIGHT
+        assert img.format.upper() == "WEBP"
+
+
+def test_raw_full_converts_to_jpeg(raw_sample: Path, tmp_path: Path) -> None:
+    dst = tmp_path / f"{raw_sample.stem}_full.jpg"
+    generate_full(raw_sample, dst)
+    assert dst.is_file()
+    with WandImage(filename=str(dst)) as img:
+        assert img.format.upper() == "JPEG"
+        assert img.width > 0
+        assert img.height > 0
+
+
+def test_raw_full_strips_gps_metadata(raw_sample: Path, tmp_path: Path) -> None:
+    dst = tmp_path / f"{raw_sample.stem}_stripped.jpg"
+    generate_full(raw_sample, dst)
+    with WandImage(filename=str(dst)) as img:
+        gps_keys = [k for k in img.metadata.keys() if k.startswith("exif:GPS")]
+    assert gps_keys == []
+
+
+def test_raw_in_image_extensions() -> None:
+    from simplegallery.config import RAW_IMAGE_EXTENSIONS, Config
+
+    cfg = Config(web_root=Path("/tmp/sg-test-raw"))
+    for ext in (".nef", ".cr2", ".arw", ".raf", ".dng", ".orf"):
+        assert ext in cfg.image_extensions
+        assert ext not in cfg.direct_image_extensions
+    assert RAW_IMAGE_EXTENSIONS <= cfg.image_extensions
+
+
+def test_is_raw_classifier() -> None:
+    from simplegallery.image_processor import _is_raw
+
+    for ext in (".nef", ".NEF", ".cr2", ".CR2", ".arw", ".raf", ".dng", ".orf"):
+        assert _is_raw(Path(f"/tmp/foo{ext}"))
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".heic", ".tif", ".tiff", ".gif"):
+        assert not _is_raw(Path(f"/tmp/foo{ext}"))
+
+
 # --- gate: builder._image_worker only runs generate_full when full is set ---
 
 

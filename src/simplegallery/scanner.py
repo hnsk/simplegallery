@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from .config import Config
+from .config import RAW_IMAGE_EXTENSIONS, Config
 from .slugify import slugify
 
 log = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 # Image extensions that need transcoding to JPEG for inline display. Anything
 # outside this set in `Config.image_extensions` is treated as browser-friendly
 # and referenced directly via its original URL.
-TRANSCODE_EXTS: frozenset[str] = frozenset({".heic", ".heif", ".tif", ".tiff"})
+TRANSCODE_EXTS: frozenset[str] = frozenset({".heic", ".heif", ".tif", ".tiff"}) | RAW_IMAGE_EXTENSIONS
 
 
 @dataclass(frozen=True)

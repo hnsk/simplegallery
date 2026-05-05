@@ -15,6 +15,33 @@ DEFAULT_GALLERY_SUBDIR = "gallery"
 # are owned by the build output.
 RESERVED_ROOT_NAMES: frozenset[str] = frozenset({"assets", "index.html"})
 
+# Camera RAW image formats. Treated like HEIC/TIFF: original kept under
+# `<gallery_subdir>/` for download, JPEG derivative generated for inline view.
+# Several of these are TIFF-based containers (NEF/CR2/ARW/DNG) — ImageMagick
+# misreads them as plain TIFF unless the format is forced via the
+# `FORMAT:path` filename prefix; image_processor handles that hint.
+# See https://imagemagick.org/include/formats.php for the full list.
+RAW_IMAGE_EXTENSIONS: frozenset[str] = frozenset({
+    ".3fr",            # Hasselblad
+    ".arw", ".srf", ".sr2",  # Sony
+    ".cr2", ".cr3", ".crw",  # Canon
+    ".dcr", ".kdc",    # Kodak
+    ".dng",            # Adobe DNG
+    ".erf",            # Epson
+    ".iiq",            # Phase One
+    ".mef",            # Mamiya
+    ".mrw",            # Minolta
+    ".nef", ".nrw",    # Nikon
+    ".orf",            # Olympus
+    ".pef", ".ptx",    # Pentax
+    ".raf",            # Fujifilm
+    ".raw",            # generic
+    ".rw2",            # Panasonic
+    ".rwl",            # Leica
+    ".srw",            # Samsung
+    ".x3f",            # Sigma
+})
+
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
@@ -69,6 +96,7 @@ class Config:
         default_factory=lambda: frozenset(
             {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".gif"}
         )
+        | RAW_IMAGE_EXTENSIONS
     )
     video_extensions: frozenset[str] = field(
         default_factory=lambda: frozenset({".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"})

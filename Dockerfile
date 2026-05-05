@@ -13,6 +13,8 @@ RUN apk add --no-cache \
         libwebp \
         tiff \
         ffmpeg \
+        libraw \
+        libraw-tools \
  && ln -sf libMagickWand-7.Q16HDRI.so.10 /usr/lib/libMagickWand-7.Q16HDRI.so \
  && ln -sf libMagickCore-7.Q16HDRI.so.10 /usr/lib/libMagickCore-7.Q16HDRI.so
 

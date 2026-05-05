@@ -168,6 +168,42 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **Tests** — `tests/test_renderer.py` adds 4 cases (data-name + data-mtime on figures, on subgallery cards, sort controls present with default selections, no consecutive blank lines). `tests/test_frontend_assets.py` pins new CSS/JS hooks (`.gallery-controls`, `GalleryControls`, `gc-key`, `gc-order`). Suite: 115 pass, 1 skip.
 - [x] **Smoke** — rebuilt `./web/` via `shell` service with src mount; verified compact output (no blank lines, single-line figures), `data-mtime`/`data-name` populated, sort controls below grids.
 
+## Step 17 — Camera RAW support
+
+- [x] **Config** — new module-level `RAW_IMAGE_EXTENSIONS` constant covering
+  Nikon (NEF/NRW), Canon (CR2/CR3/CRW), Sony (ARW/SRF/SR2), Fujifilm (RAF),
+  Olympus (ORF), Panasonic (RW2), Pentax (PEF/PTX), Samsung (SRW), Adobe
+  (DNG), Leica (RWL), Hasselblad (3FR), Phase One (IIQ), Sigma (X3F),
+  Kodak (DCR/KDC), Minolta (MRW), Mamiya (MEF), Epson (ERF), generic (RAW).
+  Merged into `Config.image_extensions` default; deliberately excluded from
+  `direct_image_extensions` so the scanner sets `transcode_needed=True`,
+  matching the HEIC pipeline (JPEG derivative for inline view, original kept
+  under `<gallery_subdir>/` for download). `scanner.TRANSCODE_EXTS` doc
+  constant updated for parity.
+- [x] **Image processor — libraw decode** — Alpine's ImageMagick has no RAW
+  decoder despite advertising `raw` in DELEGATES (the only `raw.so` coder
+  handles raw RGB samples, not camera RAW). Added an explicit shell-out to
+  `dcraw_emu -h -T -w -Z -` (libraw-tools): half-size, white-balanced sRGB
+  TIFF on stdout, fed to wand via `Image(blob=…, format="tiff")`. Single
+  `_open_image(src)` context manager dispatches: RAW → libraw pipe; everything
+  else → unchanged `Image(filename=…)`. Half demosaic from a 36 MP sensor is
+  ≥9 MP — well above any web display need, ~10× faster than full demosaic.
+  `_read_with_wand` short-circuits RAW (no IM coder) so EXIF falls through to
+  `exifread`, which reads the TIFF tags directly out of the RAW container.
+- [x] **Dockerfile** — added `libraw libraw-tools` to the `base` apk install
+  (~2.7 MiB total). No build-time deps; runtime image stays lean.
+- [x] **Tests** — `tests/test_image_processor.py` adds parametrized
+  `raw_sample` fixture pulling from `sample-data/RAWs/` (one per extension
+  found): NEF / CR2 / ARW / RAF cases each verify thumbnail decode, full →
+  JPEG conversion, and GPS strip. Plus `test_raw_in_image_extensions` /
+  `test_is_raw_classifier` unit cases. Suite: 129 pass, 1 skip.
+- [x] **Smoke** — staged the four `sample-data/RAWs/*.{NEF,CR2,ARW,RAF}` into
+  `./web/gallery/raws/`. `docker compose run --rm app -v` produces a
+  `web/raws/` page with `thumbs/<slug>.webp` + `full/<slug>.jpg` (0.7-3.4 MB
+  derivatives) and lightbox links wiring `data-src=full/...jpg` +
+  `data-original=../gallery/raws/<ORIGINAL>.{NEF,CR2,ARW,RAF}` — same shape
+  as HEIC. End-to-end ~2 s for the 4 files at workers=4.
+
 ## Step 16 — CI + slim runtime image
 
 - [x] **CI** — `.github/workflows/test.yml` runs on push to main / PRs: `actions/checkout@v4` + `docker/setup-buildx-action@v3` + `docker compose --profile dev build test` + `docker compose run --rm test`. Sample-data tests skip (no `sample-data/` mount on CI), all other 115 cases run.
