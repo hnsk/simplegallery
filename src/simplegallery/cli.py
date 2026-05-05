@@ -14,8 +14,15 @@ def build_parser() -> argparse.ArgumentParser:
         prog="simplegallery",
         description="Generate a static gallery site from photos and videos.",
     )
-    parser.add_argument("--source", type=Path, help="Source directory of media subfolders.")
-    parser.add_argument("--output", type=Path, help="Output directory for generated site.")
+    parser.add_argument("--web", type=Path, help="Web root directory (single mount; default /web).")
+    parser.add_argument(
+        "--gallery-subdir",
+        dest="gallery_subdir",
+        help="Subdirectory under --web that holds source media (default 'gallery').",
+    )
+    # Legacy split-mount flags (transitional; removed in a later substep).
+    parser.add_argument("--source", type=Path, help="Source directory of media subfolders (legacy).")
+    parser.add_argument("--output", type=Path, help="Output directory for generated site (legacy).")
     parser.add_argument("--title", help="Site title.")
     parser.add_argument(
         "--watch",
@@ -36,6 +43,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def apply_args(config: Config, args: argparse.Namespace) -> Config:
     """Layer CLI overrides onto an env-derived Config."""
+    if args.web is not None:
+        config.web_root = args.web
+        config.source = args.web / config.gallery_subdir
+        config.output = args.web
+    if args.gallery_subdir is not None:
+        config.gallery_subdir = args.gallery_subdir
+        if config.web_root is not None:
+            config.source = config.web_root / args.gallery_subdir
     if args.source is not None:
         config.source = args.source
     if args.output is not None:
