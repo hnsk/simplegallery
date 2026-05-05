@@ -21,10 +21,13 @@ services:
     entrypoint: ["pytest"]
     command: ["-v"]
     working_dir: /app
+    environment:
+      SIMPLEGALLERY_SAMPLE_DATA: /sample-data
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests
       - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./sample-data:/sample-data:ro
     restart: "no"
 
   shell:
@@ -34,8 +37,11 @@ services:
     entrypoint: ["sh"]
     command: ["-c", "exec sh"]
     working_dir: /app
+    environment:
+      SIMPLEGALLERY_SAMPLE_DATA: /sample-data
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests
       - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./sample-data:/sample-data:ro
     restart: "no"

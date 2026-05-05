@@ -1,36 +1,38 @@
 # NEXT
 
-Step 4 — Image processor.
+Step 5 — Frontend (CSS + JS replaces stubs).
 
 Status:
 - Step 0 done.
 - Step 1 done.
 - Step 2 done.
-- Step 3 done. `Renderer` (PackageLoader, content-hashed `assets/gallery.<hash>.{css,js}`, depth-correct relative paths via `posixpath.relpath`), `base.html.j2` / `index.html.j2` / `gallery.html.j2`, stub `static/gallery.{css,js}`, `GalleryBuilder.build_all()` skeleton (scan → cache prune → copy_assets → render index + galleries → save cache). 40 tests pass (`docker compose run --rm test`).
-- Step 7 done early. `simplegallery:dev` image + `app`/`test`/`shell` services.
+- Step 3 done.
+- Step 4 done. `image_processor.py` (Wand: auto-orient, 400×300 crop-fill WebP@80, JPEG@92 with GPS stripped; EXIF read via Wand → `exifread` fallback, humanized to Camera/Lens/Date/Exposure/Aperture/ISO/FocalLength). Builder wires `ThreadPoolExecutor(workers)`, per-image `cache.is_stale()` skip, per-image try/except, populates `data-exif` JSON via `Renderer.render_gallery(gallery, exif=...)`. Tests pull from gitignored `sample-data/` (mounted at `/sample-data` ro in `test`/`shell` services); skip when fixtures absent. 47 passed, 1 skipped (`docker compose run --rm test`).
+- Step 7 done early.
 
-Create:
-- `src/simplegallery/image_processor.py`
-  - `generate_thumbnail(src, dst)` — wand: auto-orient, crop-fill 400×300, WebP q=80
-  - `generate_full(src, dst)` — wand: auto-orient, JPEG q=92, strip GPS, keep camera tags
-  - `extract_exif(src) -> dict` — wand primary, `exifread` fallback; return display-tag dict
-  - HEIC/HEIF input via wand (libheif from base image)
-- Wire into `builder.py`:
-  - `ThreadPoolExecutor(max_workers=config.workers)` over images
-  - Per-image: skip when `cache.is_stale(media)` is False; on success `cache.mark_done(media)`
-  - Embed EXIF JSON on `<figure data-exif='...'>` (renderer already passes `item["exif"]` through; populate it from `extract_exif()` in builder; use `renderer.serialize_exif()` helper)
-  - Per-file try/except → log + skip, never abort whole build
-- `tests/fixtures/` — small JPEG + small HEIC sample (commit them — small fixtures, not user data; outside `sample-data/`)
-- `tests/test_image_processor.py`
-  - thumb is 400×300, WebP, auto-oriented
-  - full is JPEG ≤ orig dims, q≈92
-  - `extract_exif()` returns expected camera tags
-  - GPS keys stripped from full output
-  - HEIC fixture decodes (covers libheif wiring)
+Create / replace:
+- `src/simplegallery/static/gallery.css`
+  - CSS Grid `auto-fill minmax(200px,1fr)`
+  - Lightbox overlay `position:fixed`, dark backdrop, centered media
+  - EXIF panel: side rail desktop, slide-up sheet on `@media (max-width:768px)`
+  - Play badge for video thumbs
+- `src/simplegallery/static/gallery.js` (IIFE, no deps)
+  - `GalleryGrid` — click figure → open Lightbox
+  - `Lightbox` — DOM injection, open/close/nav, focus trap (save/restore `activeElement`), `role="dialog"`, `aria-modal="true"`, prev/next/close buttons with `aria-label`, keyboard arrows + Escape, touch swipe `|Δx|>50 && |Δx|>|Δy|`, ±1 neighbor preload
+  - Image branch loads `data-src`; video branch builds `<video>` with `data-mp4` + `data-webm` sources, poster=`data-thumb`
+  - `ExifPanel` — `(i)` `<button>`; parse `data-exif` JSON → `<dl>/<dt>/<dd>` rows
+- `src/simplegallery/static/icons/play.svg` — play badge for video thumbs
+- Renderer: alt text on thumb img already from filename. Lightbox markup is JS-injected — no template change.
 
-How to run during Step 4:
+Tests:
+- `tests/test_frontend_assets.py`
+  - asset files present in package
+  - `gallery.css` / `gallery.js` non-empty, contain expected hooks (`.gallery-grid`, `Lightbox`, `data-exif`)
+  - copy_assets emits all (incl. `icons/play.svg`)
+
+How to run during Step 5:
 - Tests: `docker compose run --rm test`
-- Slow image processing iteration: `docker compose run --rm shell` then `python -c ...`
-- End-to-end smoke: `docker compose run --rm app` after dropping samples in `./source/<gallery>/`
+- Smoke: `docker compose run --rm app` after dropping sample images into `./source/<gallery>/`, then open `output/index.html` in a browser
+- Mobile check: Chrome DevTools device emulation
 
-After Step 4: update TODO.md + NEXT.md, commit, then Step 5 (frontend CSS + JS — replaces stubs).
+After Step 5: update TODO.md + NEXT.md, commit, then Step 6 (video processor) or Step 8 (watcher).

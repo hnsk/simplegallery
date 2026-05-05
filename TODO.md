@@ -29,14 +29,14 @@
 - [x] Stub `src/simplegallery/static/gallery.css` + `gallery.js` (full content lands in Step 5)
 
 ## Step 4 — Image processor
-- [ ] `src/simplegallery/image_processor.py`
+- [x] `src/simplegallery/image_processor.py`
   - `generate_thumbnail()` — wand, auto-orient, crop-fill 400×300, WebP q=80
   - `generate_full()` — wand, auto-orient, JPEG q=92, strip GPS keep camera tags
-  - `extract_exif()` — wand primary, `exifread` fallback; return dict of display tags
+  - `extract_exif()` — wand primary, `exifread` fallback; humanized display dict
   - HEIC/HEIF input supported via wand (imagemagick libheif)
-- [ ] Wire into `builder.py` — `ThreadPoolExecutor(workers)`, `cache.is_stale()` guard, embed EXIF JSON on `<figure>`
-- [ ] `tests/fixtures/` — small JPEG + HEIC sample
-- [ ] `tests/test_image_processor.py` — thumb dims, full dims, EXIF dict, GPS stripped, HEIC decoded
+- [x] Wire into `builder.py` — `ThreadPoolExecutor(workers)`, `cache.is_stale()` guard, per-image try/except, EXIF JSON on `<figure data-exif>`
+- [x] Tests use `sample-data/` (gitignored, not committed) mounted at `/sample-data` via `test`/`shell` services; `SIMPLEGALLERY_SAMPLE_DATA` env var, skip when missing
+- [x] `tests/test_image_processor.py` — thumb dims/format, full dims/format, EXIF dict shape, GPS stripped, HEIC thumb + full
 
 ## Step 5 — Frontend
 - [ ] `static/gallery.css` — CSS Grid `auto-fill minmax(200px,1fr)`, lightbox overlay `position:fixed`, `@media (max-width:768px)`

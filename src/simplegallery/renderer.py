@@ -93,14 +93,22 @@ class Renderer:
         self._write(out_path, template.render(**ctx))
         return out_path
 
-    def render_gallery(self, gallery: Gallery) -> Path:
+    def render_gallery(
+        self,
+        gallery: Gallery,
+        exif: dict[str, dict] | None = None,
+    ) -> Path:
         out_path = gallery.output_dir / INDEX_FILENAME
         page_dir = out_path.parent
         index_path = self.config.output / INDEX_FILENAME
+        exif_map = exif or {}
         ctx = {
             "site_title": self.config.title,
             "gallery": gallery,
-            "items": [self._gallery_item(m, page_dir) for m in gallery.media],
+            "items": [
+                self._gallery_item(m, page_dir, exif_map.get(m.slug))
+                for m in gallery.media
+            ],
             "index_href": self._rel(index_path, page_dir),
             "assets": self._page_assets(page_dir),
         }
@@ -135,7 +143,12 @@ class Renderer:
             "count": gallery.count,
         }
 
-    def _gallery_item(self, media: MediaFile, page_dir: Path) -> dict:
+    def _gallery_item(
+        self,
+        media: MediaFile,
+        page_dir: Path,
+        exif: dict | None = None,
+    ) -> dict:
         item: dict[str, object] = {
             "kind": media.kind,
             "name": media.source.name,
@@ -148,7 +161,9 @@ class Renderer:
             item["mp4"] = self._rel(media.output_mp4, page_dir)
         if media.output_webm is not None:
             item["webm"] = self._rel(media.output_webm, page_dir)
-        # exif filled in by Step 4; stored as JSON string when present
+        serialized = serialize_exif(exif)
+        if serialized is not None:
+            item["exif"] = serialized
         return item
 
     @staticmethod
