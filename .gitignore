@@ -13,11 +13,6 @@ env/
 *.egg
 
 # Docker bind-mount directories (source photos + generated output)
-source/
-photos/
-input/
-output/
-gallery_output/
 web/
 
 # Sample media for ad-hoc test trees (copy/rename into source/ subdirs)
