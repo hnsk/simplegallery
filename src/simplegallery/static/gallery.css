@@ -1,0 +1,27 @@
+/* simplegallery — stub stylesheet (full content lands in Step 5). */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.gallery-grid figure,
+.gallery-grid a {
+  margin: 0;
+}
+
+.gallery-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+}

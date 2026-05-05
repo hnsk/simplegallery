@@ -1,0 +1,24 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ gallery.name }} — {{ site_title }}{% endblock %}
+{% block body %}
+<header class="gallery-header">
+  <p><a href="{{ index_href }}">&larr; {{ site_title }}</a></p>
+  <h1>{{ gallery.name }}</h1>
+</header>
+<main>
+  <div class="gallery-grid" data-gallery="{{ gallery.slug }}">
+    {% for item in items %}
+    <figure
+      data-kind="{{ item.kind }}"
+      data-thumb="{{ item.thumb }}"
+      {% if item.full %}data-src="{{ item.full }}"{% endif %}
+      {% if item.mp4 %}data-mp4="{{ item.mp4 }}"{% endif %}
+      {% if item.webm %}data-webm="{{ item.webm }}"{% endif %}
+      {% if item.exif %}data-exif='{{ item.exif }}'{% endif %}
+    >
+      <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy">
+    </figure>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

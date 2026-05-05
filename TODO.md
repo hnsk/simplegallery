@@ -20,12 +20,13 @@
 - [x] `tests/test_cache.py` — stale detection, prune, atomic save
 
 ## Step 3 — Renderer + stub templates
-- [ ] `src/simplegallery/renderer.py` — Jinja2 `PackageLoader`; `render_index()`; `render_gallery()`; copy `static/` → `output/assets/` each build with content-hash filenames (`gallery.<hash>.css`, `gallery.<hash>.js`); correct relative asset paths per depth
-- [ ] `src/simplegallery/templates/base.html.j2` — shared head, hashed asset links
-- [ ] `src/simplegallery/templates/index.html.j2` — grid of gallery cards (cover thumb, name, count)
-- [ ] `src/simplegallery/templates/gallery.html.j2` — `<figure data-exif data-src data-mp4 data-webm>` per item
-- [ ] `src/simplegallery/builder.py` — `GalleryBuilder.build_all()` skeleton (scanner → renderer, no processing yet)
-- [ ] `tests/test_renderer.py` — render to tmpdir; assert files exist, hashed asset names referenced, depth-correct relative paths
+- [x] `src/simplegallery/renderer.py` — Jinja2 `PackageLoader`; `render_index()`; `render_gallery()`; copy `static/` → `output/assets/` each build with content-hash filenames (`gallery.<hash>.css`, `gallery.<hash>.js`); correct relative asset paths per depth
+- [x] `src/simplegallery/templates/base.html.j2` — shared head, hashed asset links
+- [x] `src/simplegallery/templates/index.html.j2` — grid of gallery cards (cover thumb, name, count)
+- [x] `src/simplegallery/templates/gallery.html.j2` — `<figure data-exif data-src data-mp4 data-webm>` per item
+- [x] `src/simplegallery/builder.py` — `GalleryBuilder.build_all()` skeleton (scanner → renderer, no processing yet)
+- [x] `tests/test_renderer.py` — render to tmpdir; assert files exist, hashed asset names referenced, depth-correct relative paths
+- [x] Stub `src/simplegallery/static/gallery.css` + `gallery.js` (full content lands in Step 5)
 
 ## Step 4 — Image processor
 - [ ] `src/simplegallery/image_processor.py`
