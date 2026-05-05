@@ -151,8 +151,8 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **`cli.parse_args`** — wrapper removed; `__main__` and tests call `build_parser().parse_args(argv)` directly.
 - [x] **`Renderer.copy_assets`** — `_HASHED_STATIC_FILES` / `_VERBATIM_STATIC_FILES` collapsed into single `_STATIC_FILES = ((logical, hashed), …)` iteration.
 - [x] **`pyproject.toml`** — added `keywords`, `classifiers`, `[project.urls]` (homepage / repo / issues at github.com/hnsk/simplegallery). Author corrected to `Hannu Ylitalo <hannu@ylitalo.eu>`.
-- [ ] **CI** — `.github/workflows/test.yml` running `docker compose run --rm test` on push/PR. Skipped this round.
-- [ ] **Dockerfile split** — optional builder + runtime stages so production image doesn't carry `[dev]` extras (pytest). Deferred — image size not a concern.
+- [x] **CI** — `.github/workflows/test.yml` runs `docker compose --profile dev build test` + `docker compose run --rm test` on push to main / PRs.
+- [x] **Dockerfile split** — `base` → `builder` (compiles + `pip install --prefix=/install`) → `runtime` (copies `/install` into `/usr/local`, no `-dev`/`build-base` pkgs); `dev` stage retains build deps + editable install + tests. Compose `app` → `target: runtime` (`simplegallery:runtime`), `test`/`shell` → `target: dev` (`simplegallery:dev`). Runtime base sets `MAGICK_HOME=/usr` + creates `libMagick{Wand,Core}-7.Q16HDRI.so` symlinks (musl `find_library` returns None without gcc; `MAGICK_HOME` lets wand resolve directly). Sizes: runtime 200 MB (was 493 MB), dev 505 MB. Smoke: `docker compose run --rm app -v` over `./web/gallery/` rebuilds 4 galleries cleanly; `docker compose run --rm test` 115 pass, 1 skip.
 - [x] **Dev log relocation** — `TODO.md` + `NEXT.md` moved under `docs/`.
 - [x] **`tests/test_smoke.py`** — folded into `tests/test_config.py` (`test_version_present`, `test_cli_overrides_config`, `test_default_log_level_info`); file removed.
 - [x] **`tests/test_config.py::test_apply_args_no_legacy_source_output`** — dropped.
@@ -167,3 +167,16 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **JS** — `GalleryControls` reorders DOM nodes of both `.subgallery-grid` and `.gallery-grid` on change. `GalleryGrid.refreshItems()` rebuilds `items` array from current DOM order so lightbox prev/next + click index lookup follow the new order. Click handler now uses `figure.dataset.slug` to look up the lightbox index instead of a fixed closure index.
 - [x] **Tests** — `tests/test_renderer.py` adds 4 cases (data-name + data-mtime on figures, on subgallery cards, sort controls present with default selections, no consecutive blank lines). `tests/test_frontend_assets.py` pins new CSS/JS hooks (`.gallery-controls`, `GalleryControls`, `gc-key`, `gc-order`). Suite: 115 pass, 1 skip.
 - [x] **Smoke** — rebuilt `./web/` via `shell` service with src mount; verified compact output (no blank lines, single-line figures), `data-mtime`/`data-name` populated, sort controls below grids.
+
+## Step 16 — CI + slim runtime image
+
+- [x] **CI** — `.github/workflows/test.yml` runs on push to main / PRs: `actions/checkout@v4` + `docker/setup-buildx-action@v3` + `docker compose --profile dev build test` + `docker compose run --rm test`. Sample-data tests skip (no `sample-data/` mount on CI), all other 115 cases run.
+- [x] **Dockerfile split** — multi-stage:
+  - `base` (python:3.12-alpine + runtime apk pkgs `imagemagick libheif libwebp tiff ffmpeg` + ImageMagick policy + `MAGICK_HOME=/usr` + unversioned `libMagick{Wand,Core}-7.Q16HDRI.so` symlinks).
+  - `builder` (adds `*-dev` + `build-base`, `pip install --prefix=/install .`).
+  - `runtime` (copies `/install` → `/usr/local`, no compilers / headers).
+  - `dev` (adds `*-dev` + `build-base`, `pip install -e ".[dev]"`, copies `tests/`).
+  - Compose `app` → `target: runtime` (`simplegallery:runtime`); `test` / `shell` → `target: dev` (`simplegallery:dev`). `serve` keeps `image: simplegallery:dev` (already gated behind dev profile).
+  - `MAGICK_HOME` needed because musl's `ctypes.util.find_library` returns `None` without gcc on PATH; `MAGICK_HOME=/usr` makes wand resolve `libMagickWand-7.Q16HDRI.so` directly. The unversioned symlink is what the dev image gets from `imagemagick-dev`; runtime stage recreates it manually.
+  - Sizes: `simplegallery:runtime` **200 MB** (was 493 MB), `simplegallery:dev` 505 MB.
+- [x] **Smoke** — `docker compose run --rm app -v` rebuilds 4 galleries under `./web/gallery/` cleanly (no `MagickWand` ImportError); `docker compose run --rm test` 115 pass, 1 skip.

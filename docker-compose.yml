@@ -2,7 +2,8 @@ services:
   app:
     build:
       context: .
-    image: simplegallery:dev
+      target: runtime
+    image: simplegallery:runtime
     command: ["--watch", "-v"]
     environment:
       SIMPLEGALLERY_WEB: /web
@@ -19,6 +20,7 @@ services:
     profiles: ["dev"]
     build:
       context: .
+      target: dev
     image: simplegallery:dev
     entrypoint: ["pytest"]
     command: ["-v"]
@@ -37,6 +39,7 @@ services:
     profiles: ["dev"]
     build:
       context: .
+      target: dev
     image: simplegallery:dev
     entrypoint: ["sh"]
     command: ["-c", "exec sh"]

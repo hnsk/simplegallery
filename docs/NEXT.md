@@ -1,36 +1,40 @@
 # NEXT
 
-Step 15 (sort UI + compact HTML) landed.
+Step 16 (CI + slim runtime image) landed. Step 11 mobile-viewport carry-over verified by user — closed out.
 
 ## What landed this batch
 
-- `Gallery.mtime` — scanner computes recursive max-mtime per gallery (own media + subgalleries) so subgallery cards expose a meaningful sort key.
-- Renderer / templates — jinja env switched to `trim_blocks=True, lstrip_blocks=True`; `gallery.html.j2`, `_breadcrumbs.html.j2`, `base.html.j2` rewritten compact (no consecutive blank lines, single-line `<figure>` blocks).
-- New per-page `<aside class="gallery-controls">` below the subgallery + media grids: `Sort by [name|date]` + `Order [asc|desc]`. Default `name asc` (matches scanner output, so initial order is unchanged).
-- `data-name` + `data-mtime` (epoch seconds) added to every `<figure>` and every `.subgallery-card` for client-side sort.
-- `gallery.js` — `GalleryControls` reorders DOM nodes of both `.subgallery-grid` and `.gallery-grid` in place; `GalleryGrid.refreshItems()` rebuilds the `items` array (and therefore lightbox prev/next order) from the current DOM order. Click handler now resolves index by `figure.dataset.slug` so post-sort clicks still open the correct lightbox slot.
-- CSS — `.gallery-controls` flex layout with themed `<select>` styling.
-- Tests — 4 new renderer cases (data-name + data-mtime on figures, on subgallery cards, sort controls + defaults, compact output) + frontend-asset hooks (`.gallery-controls`, `GalleryControls`, `gc-key`, `gc-order`). Suite: **115 pass, 1 skip** in docker.
+- `.github/workflows/test.yml` — push (main) / PR triggers, `docker/setup-buildx-action@v3`, `docker compose --profile dev build test` + `docker compose run --rm test`.
+- `Dockerfile` split into `base` → `builder` → `runtime` / `dev` stages. Runtime carries no compilers or `-dev` headers; deps are `pip install --prefix=/install`-ed in builder and `COPY --from=builder /install /usr/local`-ed into runtime. Dev stage retains build deps + editable install + tests.
+- Base sets `MAGICK_HOME=/usr` and creates unversioned `libMagick{Wand,Core}-7.Q16HDRI.so` symlinks — required because musl `ctypes.util.find_library` returns `None` without gcc, so wand needs `MAGICK_HOME` + the unversioned `.so` to resolve.
+- `docker-compose.yml` — `app` builds with `target: runtime` (image tag `simplegallery:runtime`); `test` + `shell` build with `target: dev` (`simplegallery:dev`).
+- Image sizes: `simplegallery:runtime` **200 MB** (was 493 MB, ~60% cut), `simplegallery:dev` 505 MB.
+- Mobile-viewport lightbox (Step 11 carry-over: swipe + EXIF slide-up + hash routing on touch) verified by user.
 
 ## Next batch
 
-1. **CI** — `.github/workflows/test.yml` running `docker compose run --rm test` on push/PR.
-2. **Dockerfile split (optional)** — builder + runtime stages so production image drops `[dev]` extras.
-3. **Mobile-viewport lightbox verify** — Step 11 carry-over (swipe + EXIF slide-up sheet + hash routing on touch).
+Repo is feature-complete for the original scope. Open candidates if a new batch is desired:
+
+1. **Publish** — push to `github.com/hnsk/simplegallery`, tag `v0.1.0`, `python -m build` + `twine upload` to PyPI (image already production-shaped). Requires user to provide remote + PyPI creds.
+2. **GHCR image publish** — extend CI workflow to also build + push `simplegallery:runtime` to `ghcr.io/hnsk/simplegallery` on tag.
+3. **Sample-data CI tests** — gate the currently-skipped EXIF/HEIC cases behind a CI fixture pack (committed under `tests/fixtures/` or fetched at job start).
 
 ## How to reproduce
 
-- Build: `docker compose build app`
+- Build runtime: `docker compose build app`
+- Build dev (test/shell): `docker compose --profile dev build test`
 - Tests: `docker compose run --rm test`
-- Smoke (uses installed package): `docker compose run --rm app -v`
-- Smoke against fresh src (no rebuild): `docker compose run --rm shell -c "PYTHONPATH=/app/src python -m simplegallery -v"`
+- Smoke: `docker compose run --rm app -v`
 - Browse: `docker compose --profile dev up -d serve` → http://127.0.0.1:8080/
+- CI locally: `act -j test` (or push to a branch and let GitHub run it).
 
 ---
 
 ## Earlier context (kept for reference)
 
-Step 14 (pre-publish cleanup) all but CI + optional Dockerfile split done. `pyproject.toml` polished (keywords, classifiers, urls, author). `__main__.py` deduped. `cli.parse_args` wrapper removed. Builder collapsed into single `build_all(dirty_rels=None)`. `Renderer.copy_assets` unified. Dev logs moved under `docs/`. `tests/test_smoke.py` folded into `test_config.py`. `--debounce` CLI flag added.
+Step 15 (sort UI + compact HTML) landed. `Gallery.mtime` recursive max-mtime per gallery. Renderer uses `trim_blocks=True, lstrip_blocks=True`; templates rewritten compact. New `<aside class="gallery-controls">` per page with `Sort by [name|date]` + `Order [asc|desc]`; defaults `name asc`. `data-name` + `data-mtime` (epoch seconds) on figures + subgallery cards. `gallery.js` `GalleryControls` reorders DOM in place; `GalleryGrid.refreshItems()` rebuilds the `items` array (and lightbox order). Click handler resolves index by `figure.dataset.slug`. Suite: 115 pass, 1 skip.
+
+Step 14 (pre-publish cleanup) — `pyproject.toml` polished (keywords, classifiers, urls, author). `__main__.py` deduped. `cli.parse_args` wrapper removed. Builder collapsed into single `build_all(dirty_rels=None)`. `Renderer.copy_assets` unified. Dev logs moved under `docs/`. `tests/test_smoke.py` folded into `test_config.py`. `--debounce` CLI flag added.
 
 Step 13 (shareable lightbox links) — every figure carries `id="m-{slug}"` + `data-slug`; thumb sits inside `<a class="gallery-link" href="{full|original|video}">` so right-click "copy link" / middle-click / "open in new tab" all yield the full-size media URL. Lightbox drives `location.hash`; deep links `…/page#m-slug` auto-open and back-button closes.
 
