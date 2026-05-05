@@ -47,3 +47,13 @@ services:
       - ./pyproject.toml:/app/pyproject.toml:ro
       - ./sample-data:/sample-data:ro
     restart: "no"
+
+  serve:
+    image: simplegallery:dev
+    entrypoint: ["python", "-m", "http.server", "8080", "--bind", "0.0.0.0"]
+    working_dir: /web
+    ports:
+      - "${SIMPLEGALLERY_SERVE_PORT:-8080}:8080"
+    volumes:
+      - ${SIMPLEGALLERY_WEB_DIR:-./web}:/web:ro
+    restart: "no"

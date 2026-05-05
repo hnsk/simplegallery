@@ -86,14 +86,18 @@
 - [x] Watcher: filter `FileOpenedEvent` + `FileClosedNoWriteEvent` — they fire when the build reads source files and caused infinite rebuild loop on Linux/WSL2
 - [x] `docker compose up app` smoke test — 2 subdirs (`photos`, `videos`), 6 images + 2 videos + 1 image in videos dir; index + per-gallery pages render; thumbs/full/mp4/webm produced; corrupt JPEG (`uC38zxx.jpeg`) and HEIC fail per-file (handled gracefully)
 - [x] Watcher live test — file drop → only affected gallery rebuilds; new subdir → `index_dirty=True` + scanned 3 galleries; rename → old slug pruned + new built; delete → slug pruned + index refresh
-- [ ] Manual lightbox verify in browser (arrows, EXIF, video poster)
-- [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up
-- [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` (substitute another HEIC sample, or accept as known sample-data quirk)
+- [ ] Manual lightbox verify in browser (arrows, EXIF, video poster) — moved to Step 11 carry-over via `serve` service
+- [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up — moved to Step 11 carry-over
+- [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` — moved to Step 11 carry-over
 
 ## Step 11 — Lightbox UX polish
 - [x] EXIF toggle button: relabel `i` → `EXIF`, move to top-right next to close X (`right: 4rem`); push download anchor to `right: 8.5rem`.
 - [x] EXIF panel open: shift top-right buttons (close, EXIF, download, next-arrow) left by panel width via `:has(.exif-panel[data-open="true"])` so panel doesn't cover them; desktop only (≥769px), mobile sheet unaffected.
 - [x] `.lightbox-btn` transition extended to animate `right` change.
+- [x] `serve` compose service for host browser verify (`docker compose up -d serve` → http://127.0.0.1:8080/, ro mount `./web/`).
+- [ ] Manual browser verify against `./web/` via `serve` (arrows, EXIF toggle adjacent to X, download anchor, video poster).
+- [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up sheet.
+- [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` (substitute another HEIC sample, or accept as known sample-data quirk).
 
 ## Step 10 — Web-root layout + recursive galleries + originals-as-full
 
