@@ -246,7 +246,7 @@ main { max-width: 1400px; margin: 0 auto; }
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
 }
 
 .lightbox[hidden] { display: none; }
