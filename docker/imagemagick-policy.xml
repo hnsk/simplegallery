@@ -14,8 +14,7 @@
   <policy domain="resource" name="height" value="64KP"/>
   <policy domain="resource" name="area" value="1GP"/>
   <policy domain="resource" name="disk" value="8GiB"/>
-  <policy domain="resource" name="thread" value="4"/>
-  <policy domain="resource" name="time" value="unlimited"/>
+  <policy domain="resource" name="thread" value="1"/>
 
   <policy domain="coder" rights="read|write" pattern="*"/>
   <policy domain="coder" rights="read|write" pattern="HEIC"/>

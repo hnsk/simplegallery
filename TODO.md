@@ -97,7 +97,7 @@
 - [x] `serve` compose service for host browser verify (`docker compose up -d serve` → http://127.0.0.1:8080/, ro mount `./web/`).
 - [x] Manual browser verify against `./web/` via `serve` (arrows, EXIF toggle adjacent to X, download anchor, video poster) — verified.
 - [ ] (deferred) Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up sheet.
-- [ ] Investigate HEIC time-limit race on `shelf-christmas-decoration.heic` + multi-worker JPEG flake (`cache.c/GetImagePixelCache/1743`). Single-worker only HEIC fails; workers≥4 JPEGs flake too. Likely IM pixel-cache contention across ProcessPool subprocesses (shared `/tmp` cache files?) + libheif/libde265 internal time limit on this specific HEIC sample.
+- [x] Investigate HEIC time-limit race on `shelf-christmas-decoration.heic` + multi-worker JPEG flake (`cache.c/GetImagePixelCache/1743`). Root cause: `docker/imagemagick-policy.xml` had `<policy domain="resource" name="time" value="unlimited"/>`; IM 7.1.2 parses that as `0 seconds` (visible via `magick -list resource` → `Time: 0 years`), tripping immediate `time limit exceeded` on slow decodes (HEIC dominant). Fix: removed bogus `time` policy line (default = truly unlimited) + dropped `thread=4` → `thread=1` (process pool already provides parallelism; nested IM threads = oversubscription). Verified: 20-copy HEIC stress test 0% → 100% success at workers=4 in ~10s; full pytest 110 pass.
 
 ## Step 10 — Web-root layout + recursive galleries + originals-as-full
 

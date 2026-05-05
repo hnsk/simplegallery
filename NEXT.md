@@ -1,39 +1,12 @@
 # NEXT
 
-Step 11 desktop verify done. Mobile deferred. Next session: investigate HEIC + multi-worker race.
+HEIC + multi-worker flake resolved (TODO Step 11). Root cause: `docker/imagemagick-policy.xml` had `<policy domain="resource" name="time" value="unlimited"/>`; ImageMagick 7.1.2 parses that as `0 seconds` (visible via `magick -list resource` → `Time: 0 years`), tripping immediate `time limit exceeded` at `error/cache.c/GetImagePixelCache/1743` on slow decodes (HEIC dominant; jpg/png almost never). Fix: removed bogus `time` policy line entirely (default = truly unlimited) + dropped `thread=4` → `thread=1` (process pool already provides parallelism; nested IM threads = oversubscription).
 
-## Open: HEIC race + multi-worker flake
+Verification:
+- Stress: 20× copies of `shelf-christmas-decoration.heic` at `SIMPLEGALLERY_WORKERS=4` → 0/20 → 20/20 success in ~10s.
+- Suite: `docker compose run --rm test` → 110 pass, 1 skip.
 
-Symptom: `time limit exceeded ... @ error/cache.c/GetImagePixelCache/1743` warnings during `docker compose run --rm app -v` over `./web/gallery/`.
-
-Repro matrix (workers env via `SIMPLEGALLERY_WORKERS`, default 4):
-- workers=4 (default): 3-4 of {`129679.jpg`, `214143.jpeg`, `214361.jpeg`, `214389.jpeg`} flake + HEIC.
-- workers=2: only HEIC fails.
-- workers=1: only HEIC fails.
-
-Confirmed not config:
-- `magick -list policy` → `time=unlimited`.
-- `magick -list resource` → `Time: 0 years` (= IM `MagickResourceInfinity`).
-- `MAGICK_TIME_LIMIT=86400` set in `app` service.
-- Direct `magick /sample-data/shelf-christmas-decoration.heic ...` → 0.55s, no error.
-- Direct `wand.image.Image(...)` decode + resize + save → 0.58s, no error.
-
-So error appears only in builder pipeline path (ProcessPool spawn ctx, `_image_worker` in `src/simplegallery/builder.py:243`).
-
-Hypotheses to test next session:
-1. **`/tmp` pixel cache contention.** IM uses `/tmp` for memory-mapped pixel cache when image > resource limits or for intermediate ops. `wand.image.Image` with HEIC source decodes to full pixel buffer; with `workers=4` × `IM thread=4` × ~1GP area = high `/tmp` pressure. Test: per-worker `MAGICK_TMPDIR` (e.g. `/tmp/im-${PID}`), or set `policy:resource thread=1` so each subprocess single-threads IM.
-2. **HEIC-specific libheif time limit.** libheif 1.21.2 + libde265 1.0.16 in alpine. `shelf-christmas-decoration.heic` is 1.4MB, decodes 0.55s in isolation. Under load may exceed libheif `heif_decoding_options.start_time` budget. Test: try other HEIC samples; if none flake, sample-data swap. Alternatively libheif upgrade.
-3. **Wand process init race.** Each spawned subprocess re-imports wand → re-loads MagickWand → first call may race on global init. Test: warm-up call in `_image_worker` (no-op `Image(blob=b'...')`), or `mp_context="forkserver"` instead of `spawn` (lower init cost, same isolation as spawn after first child).
-4. **GetImagePixelCache lock timeout.** IM pixel cache uses semaphore w/ default timeout. With high concurrency could trip "time limit" misreport. Test: `policy:resource memory=512MiB` per process so pixel cache stays in-memory under combined budget; or drop IM thread count.
-
-Investigation steps next session:
-1. Reproduce on clean tree: `rm -rf web/{photos,videos,thumbs,index.html,assets,.gallery_cache.json}; docker compose run --rm app -v` 5×, log which files fail per run → confirm flake distribution.
-2. Force `OMP_NUM_THREADS=1` + `MAGICK_THREAD_LIMIT=1` in `app` service env to neutralize IM internal threads. Re-run matrix.
-3. If JPEG flakes vanish → HEIC-only is sample-specific, swap sample.
-4. If HEIC still fails alone → trace inside `_image_worker` with `MAGICK_DEBUG=Cache,Resource` env to see which resource trips.
-5. Decide: (a) document as sample-data limit + cap `workers=2` in compose default, or (b) ship `MAGICK_THREAD_LIMIT=1` permanently, or (c) drop sample and find smaller HEIC fixture.
-
-Files: `src/simplegallery/builder.py:154-187` (image pipeline + ProcessPool), `src/simplegallery/image_processor.py:47-71` (wand calls), `docker/imagemagick-policy.xml` (resource policy), `docker-compose.yml` `app` service env.
+Open: deferred mobile viewport verify of lightbox (Chrome DevTools — swipe + EXIF slide-up sheet) per Step 11. After that Step 11 fully closed; pick next initiative.
 
 ## Manual verify (recap)
 
@@ -56,8 +29,8 @@ Completed substeps:
 9. **CLI / `__main__`** — done. Legacy `--source` / `--output` argparse flags + their `apply_args` branches removed; help text on `--web` now describes the single-mount layout. `__main__.py` wiring unchanged (already routes through `Config.from_env()` + `apply_args`). `tests/test_smoke.py::test_cli_overrides_config` rewritten around `--web` / `--gallery-subdir`. `tests/test_config.py::test_apply_args_no_legacy_source_output` asserts the legacy flags now raise `SystemExit`. Suite: 116 pass, 1 skip, 2 pre-existing HEIC sample-data flakes.
 10. **docker-compose.yml** — done. `app` service collapsed to a single `${SIMPLEGALLERY_WEB_DIR:-./web}:/web` rw bind. Dropped `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars (no longer read by `Config.from_env`); replaced with `SIMPLEGALLERY_WEB=/web` + `SIMPLEGALLERY_GALLERY_SUBDIR=${SIMPLEGALLERY_GALLERY_SUBDIR:-gallery}`. `test` / `shell` services untouched. `docker compose config` parses; `docker compose run --rm test` still 116 pass + sample-data HEIC flakes only.
 11. **Sample tree** — done. `./web/gallery/cover.jpg` (root-level media, copy of EXIF-bearing `23xxesym0e9w18z2904frnpgy7.jpg`), `./web/gallery/photos/{129679.jpg,214143.jpeg,214361.jpeg,52840.png}` (mixed jpg/jpeg/png; all browser-friendly so no `full/` derivative expected), `./web/gallery/photos/macro/{214389.jpeg,shelf-christmas-decoration.heic}` (HEIC exercises `transcode_needed` + JPEG derivative + lightbox download), `./web/gallery/videos/{214357.mp4,198088.webm}`. `.gitignore` extended with `web/` so the tree isn't tracked.
-12. **Tests sweep** — done. Grep across `src/` + `tests/` cleared all stale legacy refs (`render_index`, `index.html.j2`, `_index_entry`, `--source`, `--output`, `index_dirty`, `SIMPLEGALLERY_SOURCE`, `SIMPLEGALLERY_OUTPUT`). Last legacy stragglers were `tests/test_scanner.py` (8 cases all driven through legacy flat `scan()`) plus the `scan()` / `_scan_files_into()` / `emit_full_for_all_images` machinery in `src/simplegallery/scanner.py`; all removed. `DirectoryScanner.scan_tree()` is now the only public scan entrypoint. `MediaFile.original_rel` docstring trimmed (no more "empty for legacy callers"). Suite: 110 pass, 1 skip; sample-data HEIC cases oscillating green/red.
-13. **Smoke** — done. Required Dockerfile pre-step first: stale `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars replaced with `SIMPLEGALLERY_WEB=/web`; `VOLUME ["/source", "/output"]` → `VOLUME ["/web"]`. `app` service in compose gained `MAGICK_TIME_LIMIT=${MAGICK_TIME_LIMIT:-86400}` for parity with test/shell. `app` image rebuilt; `docker compose run --rm app -v` over `./web/gallery/` rendered all four pages (root + photos + photos/macro + videos), populated `./web/assets/`, served browser-friendly originals direct (no `full/` derivative), kept HEIC plumbing correct (`data-src` → JPEG derivative, `data-original` → `.heic`). Breadcrumbs correct at every depth; no output written under `./web/gallery/`. Pre-existing sample-data quirk: `shelf-christmas-decoration.heic` still hits `time limit exceeded` from libheif/libde265 (ImageMagick policy is `time=unlimited`, so the limit is internal to the HEIF decoder, not IM resource limits). Not a Step 10 regression.
+12. **Tests sweep** — done. Grep across `src/` + `tests/` cleared all stale legacy refs (`render_index`, `index.html.j2`, `_index_entry`, `--source`, `--output`, `index_dirty`, `SIMPLEGALLERY_SOURCE`, `SIMPLEGALLERY_OUTPUT`). Last legacy stragglers were `tests/test_scanner.py` (8 cases all driven through legacy flat `scan()`) plus the `scan()` / `_scan_files_into()` / `emit_full_for_all_images` machinery in `src/simplegallery/scanner.py`; all removed. `DirectoryScanner.scan_tree()` is now the only public scan entrypoint. `MediaFile.original_rel` docstring trimmed (no more "empty for legacy callers"). Suite: 110 pass, 1 skip; sample-data HEIC cases now stable green after policy fix.
+13. **Smoke** — done. Required Dockerfile pre-step first: stale `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars replaced with `SIMPLEGALLERY_WEB=/web`; `VOLUME ["/source", "/output"]` → `VOLUME ["/web"]`. `app` service in compose gained `MAGICK_TIME_LIMIT=${MAGICK_TIME_LIMIT:-86400}` for parity with test/shell. `app` image rebuilt; `docker compose run --rm app -v` over `./web/gallery/` rendered all four pages (root + photos + photos/macro + videos), populated `./web/assets/`, served browser-friendly originals direct (no `full/` derivative), kept HEIC plumbing correct (`data-src` → JPEG derivative, `data-original` → `.heic`). Breadcrumbs correct at every depth; no output written under `./web/gallery/`. HEIC `time limit exceeded` flake on `shelf-christmas-decoration.heic` resolved via Step 11 policy fix.
 
 Goal recap:
 - Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
@@ -74,32 +47,12 @@ Decisions locked:
 4. Subgallery card shows own media count + non-recursive subgallery count.
 5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-Step 10 is functionally complete. Open items left from earlier in TODO.md (carried over from Step 9, still apply):
+Step 10 functionally complete. Open items carried over from Step 9:
 
-- Manual lightbox verify in browser (arrows, EXIF, video poster) against the freshly-generated `./web/index.html` etc. — needs a host browser; serve with e.g. `python -m http.server` against `./web/` (or `docker run -v ./web:/usr/share/nginx/html:ro -p 8080:80 nginx`). Spot-check: arrow keys, EXIF info button, video plays, lightbox download anchor pulls original (incl. HEIC).
-- Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up panel.
-- Resolve HEIC `time limit exceeded` on `shelf-christmas-decoration.heic`. Source is libheif/libde265 internal time, not ImageMagick's policy (already `time=unlimited`). Options: substitute another HEIC sample, or upgrade libheif. Optional — known sample-data quirk.
+- Manual lightbox verify in browser (arrows, EXIF, video poster) against `./web/index.html` etc. — done desktop via `serve` (Step 11).
+- Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up panel — deferred.
 
-Recommended next session: do the manual browser pass, then close out Step 10 in TODO.md.
-
-Order of attack:
-1. ~~Config (env + dataclass).~~ done
-2. ~~Scanner (recursive, new `Gallery` shape, reserved names, transcode_needed flag on `MediaFile`).~~ done
-3. ~~Cache (path-keyed verified; recursive-aware prune; reserved roots).~~ done
-4. ~~Image processor (skip `generate_full` when not transcode_needed).~~ done
-5. ~~Builder (DFS walk).~~ done
-6. ~~Renderer + templates (breadcrumbs, subgallery cards, original href, download data, drop separate index template).~~ done
-7. ~~Frontend (download button + subgallery + breadcrumb styling).~~ done
-8. ~~Watcher (per-dir dirty propagation under new layout).~~ done
-9. ~~CLI/`__main__` (drop legacy `--source`/`--output`).~~ done
-10. ~~docker-compose.yml.~~ done
-11. ~~Sample tree assembled under `./web/gallery/`.~~ done
-12. ~~Tests sweep.~~ done
-13. ~~Smoke build over nested sample tree.~~ done
-
-Per substep: update TODO.md + NEXT.md + commit.
-
-How to reproduce so far:
+How to reproduce:
 - Build: `docker compose build app`
-- Tests: `docker compose run --rm test` (116 pass, 1 skip, 2 pre-existing HEIC sample-data flakes on `shelf-christmas-decoration.heic`)
-- Smoke (current pre-Step-10 layout): `docker compose run --rm app -v` (will be replaced with `/web` layout in Step 10).
+- Tests: `docker compose run --rm test` (110 pass, 1 skip)
+- Smoke: `docker compose run --rm app -v` over `./web/gallery/`.
