@@ -33,7 +33,7 @@ class MediaFile:
     transcode_needed: bool = False
     # Path to the original media relative to web_root (POSIX form). Used as
     # data-src for browser-friendly images and as the lightbox download link
-    # for every media item. Empty for legacy callers that don't set it.
+    # for every media item.
     original_rel: PurePosixPath = field(default_factory=PurePosixPath)
 
     @property
@@ -63,8 +63,6 @@ class Gallery:
     images: list[MediaFile] = field(default_factory=list)
     videos: list[MediaFile] = field(default_factory=list)
     cover_file: MediaFile | None = None
-    # Recursive layout fields. For legacy flat-mode scans, rel_path is empty,
-    # subgalleries is empty, breadcrumbs is empty.
     rel_path: PurePosixPath = field(default_factory=PurePosixPath)
     subgalleries: list["Gallery"] = field(default_factory=list)
     # Ancestors + self chain as (name, rel_path). Renderer turns rel_path into
@@ -94,52 +92,11 @@ class Gallery:
 
 
 class DirectoryScanner:
-    """Walk source directory, build Gallery list (flat) or tree (recursive)."""
+    """Walk source directory recursively and build a Gallery tree."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    # ---- legacy flat scan (top-level subdirs only) -----------------------
-    def scan(self) -> list[Gallery]:
-        """Top-level subdirectories of source as independent galleries.
-
-        Retained for callers that have not yet migrated to the recursive
-        layout (builder/renderer/watcher are migrated in later substeps).
-        """
-        source = self.config.source
-        if not source.is_dir():
-            log.warning("source dir does not exist: %s", source)
-            return []
-
-        galleries: list[Gallery] = []
-        gallery_slugs: set[str] = set()
-
-        for entry in sorted(source.iterdir(), key=lambda p: p.name.lower()):
-            if not entry.is_dir():
-                continue
-            if entry.name.startswith("."):
-                continue
-            slug = slugify(entry.name, gallery_slugs)
-            gallery_slugs.add(slug)
-            output_dir = self.config.output / slug
-            gallery = Gallery(
-                name=entry.name,
-                slug=slug,
-                source_dir=entry,
-                output_dir=output_dir,
-                rel_path=PurePosixPath(entry.name),
-            )
-            self._scan_files_into(entry, output_dir, gallery, rel_path=PurePosixPath(entry.name))
-            if gallery.count == 0:
-                log.info("skipping empty gallery: %s", entry.name)
-                continue
-            gallery.cover_file = (
-                gallery.images[0] if gallery.images else (gallery.videos[0] if gallery.videos else None)
-            )
-            galleries.append(gallery)
-        return galleries
-
-    # ---- recursive tree scan --------------------------------------------
     def scan_tree(self) -> Gallery | None:
         """Return the root Gallery covering the entire source tree, or None
         if the tree has no media at any depth.
@@ -260,54 +217,6 @@ class DirectoryScanner:
         )
         return gallery
 
-    # ---- internals -------------------------------------------------------
-    def _scan_files_into(
-        self, source_dir: Path, output_dir: Path, gallery: Gallery, *, rel_path: PurePosixPath
-    ) -> None:
-        image_exts = self.config.image_extensions
-        video_exts = self.config.video_extensions
-        direct_exts = self.config.direct_image_extensions
-        file_slugs: set[str] = set()
-        for f in sorted(source_dir.iterdir(), key=lambda p: p.name.lower()):
-            if not f.is_file():
-                continue
-            if f.name.startswith("."):
-                continue
-            ext = f.suffix.lower()
-            if ext in image_exts:
-                kind = "image"
-            elif ext in video_exts:
-                kind = "video"
-            else:
-                continue
-            try:
-                stat = f.stat()
-            except OSError as exc:
-                log.warning("stat failed: %s (%s)", f, exc)
-                continue
-            file_slug = slugify(f.stem, file_slugs)
-            file_slugs.add(file_slug)
-            transcode = (kind == "image") and (ext not in direct_exts)
-            original_rel = PurePosixPath(self.config.gallery_subdir) / rel_path / f.name
-            # Legacy flat scan: keep the always-emit-output_full behavior so
-            # existing builder/image_processor tests keep passing. The
-            # tree-mode scanner uses the conditional path.
-            media = self._build_media(
-                source=f,
-                kind=kind,
-                slug=file_slug,
-                size=stat.st_size,
-                mtime=stat.st_mtime,
-                output_dir=output_dir,
-                original_rel=original_rel,
-                transcode_needed=transcode,
-                emit_full_for_all_images=True,
-            )
-            if kind == "image":
-                gallery.images.append(media)
-            else:
-                gallery.videos.append(media)
-
     @staticmethod
     def _build_media(
         *,
@@ -319,11 +228,9 @@ class DirectoryScanner:
         output_dir: Path,
         original_rel: PurePosixPath,
         transcode_needed: bool,
-        emit_full_for_all_images: bool = False,
     ) -> MediaFile:
         thumb = output_dir / "thumbs" / f"{slug}.webp"
         if kind == "image":
-            include_full = emit_full_for_all_images or transcode_needed
             return MediaFile(
                 source=source,
                 kind=kind,
@@ -331,7 +238,7 @@ class DirectoryScanner:
                 size=size,
                 mtime=mtime,
                 output_thumb=thumb,
-                output_full=(output_dir / "full" / f"{slug}.jpg") if include_full else None,
+                output_full=(output_dir / "full" / f"{slug}.jpg") if transcode_needed else None,
                 transcode_needed=transcode_needed,
                 original_rel=original_rel,
             )

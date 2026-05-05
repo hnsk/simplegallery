@@ -15,6 +15,7 @@ Completed substeps:
 9. **CLI / `__main__`** — done. Legacy `--source` / `--output` argparse flags + their `apply_args` branches removed; help text on `--web` now describes the single-mount layout. `__main__.py` wiring unchanged (already routes through `Config.from_env()` + `apply_args`). `tests/test_smoke.py::test_cli_overrides_config` rewritten around `--web` / `--gallery-subdir`. `tests/test_config.py::test_apply_args_no_legacy_source_output` asserts the legacy flags now raise `SystemExit`. Suite: 116 pass, 1 skip, 2 pre-existing HEIC sample-data flakes.
 10. **docker-compose.yml** — done. `app` service collapsed to a single `${SIMPLEGALLERY_WEB_DIR:-./web}:/web` rw bind. Dropped `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars (no longer read by `Config.from_env`); replaced with `SIMPLEGALLERY_WEB=/web` + `SIMPLEGALLERY_GALLERY_SUBDIR=${SIMPLEGALLERY_GALLERY_SUBDIR:-gallery}`. `test` / `shell` services untouched. `docker compose config` parses; `docker compose run --rm test` still 116 pass + sample-data HEIC flakes only.
 11. **Sample tree** — done. `./web/gallery/cover.jpg` (root-level media, copy of EXIF-bearing `23xxesym0e9w18z2904frnpgy7.jpg`), `./web/gallery/photos/{129679.jpg,214143.jpeg,214361.jpeg,52840.png}` (mixed jpg/jpeg/png; all browser-friendly so no `full/` derivative expected), `./web/gallery/photos/macro/{214389.jpeg,shelf-christmas-decoration.heic}` (HEIC exercises `transcode_needed` + JPEG derivative + lightbox download), `./web/gallery/videos/{214357.mp4,198088.webm}`. `.gitignore` extended with `web/` so the tree isn't tracked.
+12. **Tests sweep** — done. Grep across `src/` + `tests/` cleared all stale legacy refs (`render_index`, `index.html.j2`, `_index_entry`, `--source`, `--output`, `index_dirty`, `SIMPLEGALLERY_SOURCE`, `SIMPLEGALLERY_OUTPUT`). Last legacy stragglers were `tests/test_scanner.py` (8 cases all driven through legacy flat `scan()`) plus the `scan()` / `_scan_files_into()` / `emit_full_for_all_images` machinery in `src/simplegallery/scanner.py`; all removed. `DirectoryScanner.scan_tree()` is now the only public scan entrypoint. `MediaFile.original_rel` docstring trimmed (no more "empty for legacy callers"). Suite: 110 pass, 1 skip; sample-data HEIC cases oscillating green/red.
 
 Goal recap:
 - Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
@@ -31,7 +32,7 @@ Decisions locked:
 4. Subgallery card shows own media count + non-recursive subgallery count.
 5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-Next substep: **Tests (10.12)** — full sweep of any test still asserting the legacy flat layout. The earlier per-substep rewrites already covered scanner/cache/builder/renderer/watcher/frontend/config — but per the Step 10 plan we still need a final pass that grep-checks the suite for stale assumptions. Concretely: re-read `tests/test_smoke.py`, `tests/test_renderer.py`, `tests/test_scanner_tree.py`, `tests/test_cache.py`, `tests/test_builder_tree.py`, `tests/test_watcher.py`, `tests/test_frontend_assets.py`, `tests/test_image_processor.py`, `tests/test_video_processor.py`, `tests/test_config.py`; ensure none reference `index.html.j2`, `render_index`, the legacy flat `scan()` entrypoint, or `--source` / `--output`. Add coverage gaps if any (e.g. an integration-style test that runs `build_tree()` over a tmp-dir tree mirroring the new sample layout). Then run `docker compose run --rm test` and confirm baseline still holds (116 pass + 2 known HEIC flakes).
+Next substep: **Smoke build (10.13)** — final smoke run over the nested sample tree. Bring up `docker compose run --rm app -v` against the assembled `./web/gallery/`. Verify: (1) `./web/index.html`, `./web/photos/index.html`, `./web/photos/macro/index.html`, `./web/videos/index.html` all generated; (2) browser-friendly originals under `./web/gallery/photos/` and `./web/gallery/videos/` are referenced via `data-src` directly (no `./web/photos/full/...` JPEG derivative); (3) the HEIC under `./web/gallery/photos/macro/` produces `./web/photos/macro/full/<slug>.jpg` and the lightbox download still points back at the `.heic` original; (4) `./web/assets/` populated, hashed CSS/JS present; (5) breadcrumbs rendered correctly at every depth (`<title> / photos / macro` etc.); (6) no output written under `./web/gallery/` (we own the rest of `./web/`). Open one of the generated pages in a browser to spot-check the lightbox + EXIF + download button. Capture any regressions in NEXT.md before closing Step 10.
 
 Order of attack:
 1. ~~Config (env + dataclass).~~ done
@@ -45,7 +46,7 @@ Order of attack:
 9. ~~CLI/`__main__` (drop legacy `--source`/`--output`).~~ done
 10. ~~docker-compose.yml.~~ done
 11. ~~Sample tree assembled under `./web/gallery/`.~~ done
-12. Tests sweep.
+12. ~~Tests sweep.~~ done
 13. Smoke build over nested sample tree.
 
 Per substep: update TODO.md + NEXT.md + commit.
