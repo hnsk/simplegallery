@@ -100,9 +100,10 @@ def test_render_gallery_uses_depth_correct_relative_paths(cfg: Config) -> None:
 def test_builder_build_all_renders_index_and_each_gallery(cfg: Config) -> None:
     rendered = GalleryBuilder(cfg).build_all()
     rendered_set = {p.relative_to(cfg.output).as_posix() for p in rendered}
+    # Tree mode: root gallery → index.html; subgallery dirs use raw names.
     assert "index.html" in rendered_set
-    assert "trip-a/index.html" in rendered_set
-    assert "trip-b/index.html" in rendered_set
+    assert "Trip A/index.html" in rendered_set
+    assert "Trip B/index.html" in rendered_set
     assert (cfg.output / ASSETS_DIRNAME).is_dir()
 
 

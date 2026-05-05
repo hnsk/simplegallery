@@ -30,20 +30,65 @@ class GalleryBuilder:
         self.renderer = Renderer(config)
 
     def build_all(self) -> list[Path]:
-        """Full build. Returns list of rendered HTML paths (for tests/logging)."""
-        return self._build(selected_names=None, rebuild_index=True)
+        """Full build over the recursive web-root layout.
+
+        Returns the list of rendered HTML paths (root + every non-empty
+        subgallery). Empty trees produce no pages.
+        """
+        return self.build_tree()
+
+    def build_tree(self) -> list[Path]:
+        """DFS-walk the source tree, process all media, render every page."""
+        self.config.output.mkdir(parents=True, exist_ok=True)
+        self.cache.load()
+
+        root = self.scanner.scan_tree()
+        if root is None:
+            log.info("no media found in %s", self.config.source)
+            self.renderer.copy_assets()
+            self.cache.prune([])
+            self.cache.save()
+            return []
+
+        galleries = root.walk()
+        log.info(
+            "scanned %d galler%s",
+            len(galleries),
+            "y" if len(galleries) == 1 else "ies",
+        )
+
+        removed = self.cache.prune([root])
+        for path in removed:
+            log.info("pruned: %s", path)
+
+        self.renderer.copy_assets()
+
+        images = [m for g in galleries for m in g.images]
+        exif_by_path = self._process_images(images)
+
+        videos = [m for g in galleries for m in g.videos]
+        self._process_videos(videos)
+
+        rendered: list[Path] = []
+        for gallery in galleries:
+            exif_map = self._exif_for_gallery(gallery, exif_by_path)
+            rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
+
+        self.cache.save()
+        log.info("rendered %d page(s)", len(rendered))
+        return rendered
 
     def build_galleries(
         self,
         names: set[str] | None,
         rebuild_index: bool = True,
     ) -> list[Path]:
-        """Partial rebuild.
+        """Partial rebuild via the legacy flat scan.
 
-        names=None → full build (alias for build_all).
-        names=empty set → only re-render index (no per-gallery work).
-        names=non-empty set → process only galleries whose source dir name is in the set;
-        always re-render index when rebuild_index is True.
+        Retained for the watcher until substep 10.8 migrates it to the
+        recursive layout. ``names=None`` falls through to a full flat-mode
+        build; an empty set only re-renders the index; a non-empty set
+        processes only matching top-level galleries.
         """
         return self._build(selected_names=names, rebuild_index=rebuild_index)
 
