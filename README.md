@@ -4,7 +4,7 @@ Static photo and video gallery generator. Point it at a directory of media, get 
 
 - Recursive: every subdirectory becomes its own gallery page with breadcrumbs and subgallery cards.
 - Browser-friendly originals (jpg/jpeg/png/webp/gif/avif, mp4/webm) served directly — no re-encode.
-- HEIC/HEIF/TIFF transcoded to JPEG for inline view; original kept and downloadable from the lightbox.
+- HEIC/HEIF/TIFF and camera RAW (NEF/CR2/CR3/ARW/RAF/DNG/...) transcoded to full-resolution JPEG for inline view; original kept and downloadable from the lightbox.
 - Other video containers (mov/m4v/mkv/avi) transcoded to MP4 (H.264) + WebM (VP9).
 - Single content-hashed CSS/JS bundle. No client-side framework.
 - Lightbox with keyboard nav, swipe, EXIF panel, deep links (`#m-<slug>`), download button.
@@ -22,6 +22,7 @@ A single mount, `/web`, owns both inputs and outputs:
 │   ├── photos/
 │   │   ├── a.jpg
 │   │   └── macro/b.heic
+│   ├── raws/d.NEF
 │   └── videos/c.mov
 ├── index.html                  # generated
 ├── assets/                     # generated (hashed CSS/JS + icons)
@@ -29,7 +30,7 @@ A single mount, `/web`, owns both inputs and outputs:
 ├── photos/
 │   ├── index.html
 │   ├── thumbs/
-│   ├── full/                   # JPEG derivatives (HEIC/TIFF only)
+│   ├── full/                   # JPEG derivatives (HEIC/TIFF/RAW only)
 │   └── macro/{index.html,thumbs/,full/}
 └── videos/{index.html,thumbs/,video/}
 ```
@@ -85,11 +86,11 @@ CLI flags override env vars override defaults.
 | `-v` / `-vv` | `SIMPLEGALLERY_LOG_LEVEL` | `INFO` | Log verbosity |
 |  | `SIMPLEGALLERY_DEBOUNCE` | `2.0` | Watch debounce seconds |
 
-`MAGICK_TIME_LIMIT=86400` is set on the `app`/`test`/`shell` services to disable ImageMagick's per-image deadline (HEIC decode can be slow).
+`MAGICK_TIME_LIMIT=86400` is set on the `app`/`test`/`shell` services to disable ImageMagick's per-image deadline.
 
 ## Privacy
 
-`generate_full` strips EXIF GPS tags from the JPEG derivatives it produces (HEIC/HEIF/TIFF). Browser-friendly originals (jpg/png/webp/gif/avif) are served directly from `<gallery_subdir>/` and **retain any GPS tags** they carry. Strip GPS upstream if that matters for the source set.
+`generate_full` strips EXIF GPS tags from the JPEG derivatives it produces (HEIC/HEIF/TIFF, camera RAW). Browser-friendly originals (jpg/png/webp/gif/avif) are served directly from `<gallery_subdir>/` and **retain any GPS tags** they carry; the original RAW/HEIC/TIFF files remain downloadable from the lightbox and are likewise unmodified. Strip GPS upstream if that matters for the source set.
 
 ## License
 
