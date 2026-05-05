@@ -353,7 +353,13 @@
     this.items = this.figures.map(figureToItem);
     this.lightbox = new Lightbox(this.items);
     var self = this;
-    this.figures.forEach(function (fig, i) {
+    function openFig(fig) {
+      var slug = fig.dataset.slug || "";
+      var idx = self.lightbox._findBySlug(slug);
+      if (idx < 0) idx = self.figures.indexOf(fig);
+      if (idx >= 0) self.lightbox.open(idx);
+    }
+    this.figures.forEach(function (fig) {
       var link = fig.querySelector("a.gallery-link");
       if (link) {
         link.addEventListener("click", function (ev) {
@@ -361,16 +367,16 @@
           if (ev.button !== 0) return;
           if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
           ev.preventDefault();
-          self.lightbox.open(i);
+          openFig(fig);
         });
       } else {
         fig.setAttribute("tabindex", "0");
         fig.setAttribute("role", "button");
-        fig.addEventListener("click", function () { self.lightbox.open(i); });
+        fig.addEventListener("click", function () { openFig(fig); });
         fig.addEventListener("keydown", function (ev) {
           if (ev.key === "Enter" || ev.key === " ") {
             ev.preventDefault();
-            self.lightbox.open(i);
+            openFig(fig);
           }
         });
       }
@@ -387,6 +393,12 @@
     }
   }
 
+  GalleryGrid.prototype.refreshItems = function () {
+    this.figures = Array.prototype.slice.call(this.root.querySelectorAll("figure"));
+    this.items = this.figures.map(figureToItem);
+    this.lightbox.items = this.items;
+  };
+
   function figureToItem(fig) {
     return {
       kind: fig.dataset.kind || "image",
@@ -401,11 +413,64 @@
     };
   }
 
+  // --- GalleryControls (sort) --------------------------------------------
+
+  function GalleryControls(scope, onChange) {
+    this.scope = scope;
+    this.onChange = onChange || null;
+    this.root = scope.querySelector(".gallery-controls");
+    if (!this.root) return;
+    this.keySel = this.root.querySelector(".gc-key");
+    this.orderSel = this.root.querySelector(".gc-order");
+    this.targets = [];
+    var sub = scope.querySelector(".subgallery-grid");
+    var grid = scope.querySelector(".gallery-grid");
+    if (sub) this.targets.push(sub);
+    if (grid) this.targets.push(grid);
+    var self = this;
+    function apply() { self.sort(); }
+    this.keySel.addEventListener("change", apply);
+    this.orderSel.addEventListener("change", apply);
+  }
+
+  GalleryControls.prototype.sort = function () {
+    if (!this.root) return;
+    var key = this.keySel.value;
+    var dir = this.orderSel.value === "desc" ? -1 : 1;
+    for (var i = 0; i < this.targets.length; i++) {
+      var container = this.targets[i];
+      var children = Array.prototype.slice.call(container.children);
+      children.sort(function (a, b) {
+        var av, bv;
+        if (key === "date") {
+          av = parseFloat(a.dataset.mtime) || 0;
+          bv = parseFloat(b.dataset.mtime) || 0;
+          if (av === bv) return 0;
+          return av < bv ? -1 * dir : 1 * dir;
+        }
+        av = (a.dataset.name || "").toLowerCase();
+        bv = (b.dataset.name || "").toLowerCase();
+        if (av === bv) return 0;
+        return av < bv ? -1 * dir : 1 * dir;
+      });
+      var frag = document.createDocumentFragment();
+      children.forEach(function (c) { frag.appendChild(c); });
+      container.appendChild(frag);
+    }
+    if (this.onChange) this.onChange();
+  };
+
   // --- bootstrap ----------------------------------------------------------
 
   ready(function () {
     document.documentElement.dataset.simplegallery = "ready";
-    var grids = document.querySelectorAll(".gallery-grid[data-gallery]");
-    Array.prototype.forEach.call(grids, function (g) { new GalleryGrid(g); });
+    var mains = document.querySelectorAll("main");
+    Array.prototype.forEach.call(mains, function (m) {
+      var grid = m.querySelector(".gallery-grid[data-gallery]");
+      var galleryGrid = grid ? new GalleryGrid(grid) : null;
+      new GalleryControls(m, function () {
+        if (galleryGrid) galleryGrid.refreshItems();
+      });
+    });
   });
 })();

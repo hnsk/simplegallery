@@ -54,6 +54,8 @@ class Renderer:
         self.env = Environment(
             loader=PackageLoader("simplegallery", "templates"),
             autoescape=select_autoescape(["html", "xml", "j2"]),
+            trim_blocks=True,
+            lstrip_blocks=True,
             keep_trailing_newline=True,
         )
         self._assets: dict[str, Asset] = {}
@@ -163,6 +165,7 @@ class Renderer:
             "cover_thumb": cover_thumb,
             "count": sg.count,
             "subcount": sg.subcount,
+            "mtime": int(sg.mtime),
         }
 
     def _gallery_item(
@@ -185,6 +188,7 @@ class Renderer:
             "name": media.source.name,
             "slug": media.slug,
             "thumb": self._rel(media.output_thumb, page_dir),
+            "mtime": int(media.mtime),
         }
         if src_href is not None:
             item["src"] = src_href

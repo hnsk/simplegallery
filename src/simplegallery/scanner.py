@@ -68,6 +68,8 @@ class Gallery:
     # Ancestors + self chain as (name, rel_path). Renderer turns rel_path into
     # an href relative to the page being rendered.
     breadcrumbs: list[tuple[str, PurePosixPath]] = field(default_factory=list)
+    # Newest mtime among own media + recursively from subgalleries; 0.0 if empty.
+    mtime: float = 0.0
 
     @property
     def media(self) -> list[MediaFile]:
@@ -219,6 +221,9 @@ class DirectoryScanner:
         gallery.cover_file = (
             gallery.images[0] if gallery.images else (gallery.videos[0] if gallery.videos else None)
         )
+        own_mtimes = [m.mtime for m in gallery.media]
+        sub_mtimes = [sg.mtime for sg in gallery.subgalleries]
+        gallery.mtime = max([*own_mtimes, *sub_mtimes, 0.0])
         return gallery
 
     @staticmethod

@@ -249,6 +249,66 @@ def test_builder_build_all_renders_root_and_each_gallery(cfg: Config) -> None:
     assert (cfg.output / ASSETS_DIRNAME).is_dir()
 
 
+def test_render_emits_data_mtime_and_data_name(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(photos)
+
+    html = out.read_text(encoding="utf-8")
+    # figure carries data-name + data-mtime for client-side sorting
+    assert 'data-name="a.heic"' in html
+    assert 'data-name="a.jpg"' in html
+    assert re.search(r'data-mtime="\d+"', html)
+
+
+def test_render_root_subgallery_cards_have_sort_data(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
+
+    html = out.read_text(encoding="utf-8")
+    assert 'data-name="photos"' in html
+    assert 'data-name="videos"' in html
+    # subgallery card includes a numeric data-mtime
+    assert re.search(r'class="subgallery-card[^"]*"[^>]*data-mtime="\d+"', html)
+
+
+def test_render_emits_sort_controls(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
+
+    html = out.read_text(encoding="utf-8")
+    assert 'class="gallery-controls"' in html
+    assert 'class="gc-key"' in html and 'class="gc-order"' in html
+    assert 'value="name" selected' in html
+    assert 'value="asc" selected' in html
+    assert 'value="date"' in html and 'value="desc"' in html
+
+
+def test_render_html_is_compact(cfg: Config) -> None:
+    """trim_blocks + lstrip_blocks should yield no consecutive blank lines."""
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
+
+    html = out.read_text(encoding="utf-8")
+    assert "\n\n" not in html, "expected no blank lines in compact output"
+
+
 def test_render_before_copy_assets_raises(cfg: Config) -> None:
     root = DirectoryScanner(cfg).scan_tree()
     assert root is not None

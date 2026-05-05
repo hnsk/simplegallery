@@ -209,6 +209,33 @@ main { max-width: 1400px; margin: 0 auto; }
 .subgallery-card--text a { width: 100%; }
 .subgallery-card--text h2 { padding-top: 0; }
 
+/* --- sort controls --- */
+
+.gallery-controls {
+  margin: 1.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.gallery-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gallery-controls select {
+  background: var(--card-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* --- lightbox --- */
 
 .lightbox {

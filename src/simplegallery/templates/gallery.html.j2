@@ -2,46 +2,27 @@
 {% block title %}{% if is_root %}{{ site_title }}{% else %}{{ gallery.name }} — {{ site_title }}{% endif %}{% endblock %}
 {% block body %}
 <header class="gallery-header">
-  {% include "_breadcrumbs.html.j2" %}
-  <h1>{{ gallery.name }}</h1>
+{% include "_breadcrumbs.html.j2" %}
+<h1>{{ gallery.name }}</h1>
 </header>
 <main>
-  {% if subgalleries %}
-  <ul class="subgallery-grid">
-    {% for sg in subgalleries %}
-    <li class="subgallery-card{% if not sg.cover_thumb %} subgallery-card--text{% endif %}" data-slug="{{ sg.slug }}">
-      <a href="{{ sg.href }}">
-        {% if sg.cover_thumb %}
-        <img src="{{ sg.cover_thumb }}" alt="{{ sg.name }}" loading="lazy">
-        {% endif %}
-        <h2>{{ sg.name }}</h2>
-        <p class="count">{{ sg.count }} item{{ '' if sg.count == 1 else 's' }}{% if sg.subcount %} · {{ sg.subcount }} subgaller{{ 'y' if sg.subcount == 1 else 'ies' }}{% endif %}</p>
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if items %}
-  <div class="gallery-grid" data-gallery="{{ gallery.slug }}">
-    {% for item in items %}
-    {% set link_href = item.src or item.original or item.mp4 or item.webm or item.thumb %}
-    <figure
-      id="m-{{ item.slug }}"
-      data-slug="{{ item.slug }}"
-      data-kind="{{ item.kind }}"
-      data-thumb="{{ item.thumb }}"
-      {% if item.src %}data-src="{{ item.src }}"{% endif %}
-      {% if item.original %}data-original="{{ item.original }}"{% endif %}
-      {% if item.mp4 %}data-mp4="{{ item.mp4 }}"{% endif %}
-      {% if item.webm %}data-webm="{{ item.webm }}"{% endif %}
-      {% if item.exif %}data-exif='{{ item.exif }}'{% endif %}
-    >
-      <a class="gallery-link" href="{{ link_href }}" aria-label="{{ item.name }}">
-        <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy">
-      </a>
-    </figure>
-    {% endfor %}
-  </div>
-  {% endif %}
+{% if subgalleries %}
+<ul class="subgallery-grid">
+{% for sg in subgalleries %}
+<li class="subgallery-card{% if not sg.cover_thumb %} subgallery-card--text{% endif %}" data-slug="{{ sg.slug }}" data-name="{{ sg.name }}" data-mtime="{{ sg.mtime }}"><a href="{{ sg.href }}">{% if sg.cover_thumb %}<img src="{{ sg.cover_thumb }}" alt="{{ sg.name }}" loading="lazy">{% endif %}<h2>{{ sg.name }}</h2><p class="count">{{ sg.count }} item{{ '' if sg.count == 1 else 's' }}{% if sg.subcount %} · {{ sg.subcount }} subgaller{{ 'y' if sg.subcount == 1 else 'ies' }}{% endif %}</p></a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% if items %}
+<div class="gallery-grid" data-gallery="{{ gallery.slug }}">
+{% for item in items %}
+{% set link_href = item.src or item.original or item.mp4 or item.webm or item.thumb %}
+<figure id="m-{{ item.slug }}" data-slug="{{ item.slug }}" data-name="{{ item.name }}" data-kind="{{ item.kind }}" data-mtime="{{ item.mtime }}" data-thumb="{{ item.thumb }}"{% if item.src %} data-src="{{ item.src }}"{% endif %}{% if item.original %} data-original="{{ item.original }}"{% endif %}{% if item.mp4 %} data-mp4="{{ item.mp4 }}"{% endif %}{% if item.webm %} data-webm="{{ item.webm }}"{% endif %}{% if item.exif %} data-exif='{{ item.exif }}'{% endif %}><a class="gallery-link" href="{{ link_href }}" aria-label="{{ item.name }}"><img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy"></a></figure>
+{% endfor %}
+</div>
+{% endif %}
+{% if subgalleries or items %}
+<aside class="gallery-controls" aria-label="Sort"><label>Sort by <select class="gc-key" name="sort-key"><option value="name" selected>Name</option><option value="date">Date</option></select></label><label>Order <select class="gc-order" name="sort-order"><option value="asc" selected>Ascending</option><option value="desc">Descending</option></select></label></aside>
+{% endif %}
 </main>
 {% endblock %}

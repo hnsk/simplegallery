@@ -157,3 +157,13 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **`tests/test_smoke.py`** — folded into `tests/test_config.py` (`test_version_present`, `test_cli_overrides_config`, `test_default_log_level_info`); file removed.
 - [x] **`tests/test_config.py::test_apply_args_no_legacy_source_output`** — dropped.
 - [x] **`SIMPLEGALLERY_DEBOUNCE`** — added `--debounce` CLI flag (only relevant with `--watch`); env var still honored via `Config.from_env`.
+
+## Step 15 — Sort UI + compact HTML
+
+- [x] **Scanner** — `Gallery.mtime` field; computed during `_scan_tree_dir` as max(own media mtime, recursive subgallery mtime, 0.0).
+- [x] **Renderer** — `_subgallery_card` and `_gallery_item` emit `mtime` (epoch int) into context; jinja env now uses `trim_blocks=True, lstrip_blocks=True` for compact HTML.
+- [x] **Templates** — `gallery.html.j2`/`_breadcrumbs.html.j2`/`base.html.j2` rewritten compact. Subgallery cards + figures gain `data-name` + `data-mtime`. New `<aside class="gallery-controls">` after the grids with `Sort by [name|date]` + `Order [asc|desc]`; defaults `name asc`.
+- [x] **CSS** — `.gallery-controls` block layout (flex, themed `<select>` styling).
+- [x] **JS** — `GalleryControls` reorders DOM nodes of both `.subgallery-grid` and `.gallery-grid` on change. `GalleryGrid.refreshItems()` rebuilds `items` array from current DOM order so lightbox prev/next + click index lookup follow the new order. Click handler now uses `figure.dataset.slug` to look up the lightbox index instead of a fixed closure index.
+- [x] **Tests** — `tests/test_renderer.py` adds 4 cases (data-name + data-mtime on figures, on subgallery cards, sort controls present with default selections, no consecutive blank lines). `tests/test_frontend_assets.py` pins new CSS/JS hooks (`.gallery-controls`, `GalleryControls`, `gc-key`, `gc-order`). Suite: 115 pass, 1 skip.
+- [x] **Smoke** — rebuilt `./web/` via `shell` service with src mount; verified compact output (no blank lines, single-line figures), `data-mtime`/`data-name` populated, sort controls below grids.

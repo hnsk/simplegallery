@@ -43,6 +43,7 @@ def test_css_contains_expected_hooks() -> None:
     assert ".subgallery-card" in css
     assert ".subgallery-card--text" in css
     assert ".lightbox-download" in css
+    assert ".gallery-controls" in css
 
 
 def test_js_contains_expected_hooks() -> None:
@@ -57,6 +58,8 @@ def test_js_contains_expected_hooks() -> None:
     assert "aria-modal" in js
     assert "lightbox-download" in js
     assert "dataset.original" in js or "data-original" in js
+    assert "GalleryControls" in js
+    assert "gc-key" in js and "gc-order" in js
 
 
 def test_play_svg_is_svg() -> None:
