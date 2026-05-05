@@ -4,8 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    SIMPLEGALLERY_SOURCE=/source \
-    SIMPLEGALLERY_OUTPUT=/output
+    SIMPLEGALLERY_WEB=/web
 
 RUN apk add --no-cache \
         imagemagick \
@@ -31,7 +30,7 @@ COPY docker/imagemagick-policy.xml /etc/ImageMagick-7/policy.xml
 
 COPY tests ./tests
 
-VOLUME ["/source", "/output"]
+VOLUME ["/web"]
 
 ENTRYPOINT ["simplegallery"]
 CMD ["--help"]
