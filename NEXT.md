@@ -1,20 +1,43 @@
 # NEXT
 
-Step 11 — lightbox UX polish: code shipped (commit 6ae09aa). EXIF button relabel `i`→`EXIF`, top-right placement next to close X, download anchor at `right: 8.5rem`, panel-open `:has()` slide for top-right buttons.
+Step 11 desktop verify done. Mobile deferred. Next session: investigate HEIC + multi-worker race.
 
-Manual browser verify hosted via new `serve` compose service:
+## Open: HEIC race + multi-worker flake
 
-- `docker compose up -d serve` → http://127.0.0.1:8080/
-- `docker compose stop serve` to tear down. Override port: `SIMPLEGALLERY_SERVE_PORT=9000 docker compose up -d serve`. Read-only mount on `./web/`.
-- Compose def: `docker-compose.yml` `serve` service uses `simplegallery:dev`, runs `python -m http.server 8080 --bind 0.0.0.0`, mounts `${SIMPLEGALLERY_WEB_DIR:-./web}:/web:ro`.
+Symptom: `time limit exceeded ... @ error/cache.c/GetImagePixelCache/1743` warnings during `docker compose run --rm app -v` over `./web/gallery/`.
 
-Spot-check pass (in browser):
-- root / nested pages: breadcrumbs correct, subgallery cards above media grid
-- lightbox: arrow keys + swipe, EXIF toggle adjacent to X, download anchor pulls original incl. HEIC `.heic`
-- video lightbox: poster shows, playback works
-- mobile (Chrome DevTools): swipe nav, EXIF slide-up sheet
+Repro matrix (workers env via `SIMPLEGALLERY_WORKERS`, default 4):
+- workers=4 (default): 3-4 of {`129679.jpg`, `214143.jpeg`, `214361.jpeg`, `214389.jpeg`} flake + HEIC.
+- workers=2: only HEIC fails.
+- workers=1: only HEIC fails.
 
-Known sample-data quirk (low priority, not a step regression): `shelf-christmas-decoration.heic` decode hits libheif/libde265 internal time limit under contention. Multi-worker (workers≥4) builds also flake on JPEGs with same `cache.c/GetImagePixelCache/1743` message — race in IM pixel cache under ProcessPool concurrency on this host. Single-worker run only fails on the HEIC. Accept until a smaller HEIC sample lands or libheif upgrade addresses it.
+Confirmed not config:
+- `magick -list policy` → `time=unlimited`.
+- `magick -list resource` → `Time: 0 years` (= IM `MagickResourceInfinity`).
+- `MAGICK_TIME_LIMIT=86400` set in `app` service.
+- Direct `magick /sample-data/shelf-christmas-decoration.heic ...` → 0.55s, no error.
+- Direct `wand.image.Image(...)` decode + resize + save → 0.58s, no error.
+
+So error appears only in builder pipeline path (ProcessPool spawn ctx, `_image_worker` in `src/simplegallery/builder.py:243`).
+
+Hypotheses to test next session:
+1. **`/tmp` pixel cache contention.** IM uses `/tmp` for memory-mapped pixel cache when image > resource limits or for intermediate ops. `wand.image.Image` with HEIC source decodes to full pixel buffer; with `workers=4` × `IM thread=4` × ~1GP area = high `/tmp` pressure. Test: per-worker `MAGICK_TMPDIR` (e.g. `/tmp/im-${PID}`), or set `policy:resource thread=1` so each subprocess single-threads IM.
+2. **HEIC-specific libheif time limit.** libheif 1.21.2 + libde265 1.0.16 in alpine. `shelf-christmas-decoration.heic` is 1.4MB, decodes 0.55s in isolation. Under load may exceed libheif `heif_decoding_options.start_time` budget. Test: try other HEIC samples; if none flake, sample-data swap. Alternatively libheif upgrade.
+3. **Wand process init race.** Each spawned subprocess re-imports wand → re-loads MagickWand → first call may race on global init. Test: warm-up call in `_image_worker` (no-op `Image(blob=b'...')`), or `mp_context="forkserver"` instead of `spawn` (lower init cost, same isolation as spawn after first child).
+4. **GetImagePixelCache lock timeout.** IM pixel cache uses semaphore w/ default timeout. With high concurrency could trip "time limit" misreport. Test: `policy:resource memory=512MiB` per process so pixel cache stays in-memory under combined budget; or drop IM thread count.
+
+Investigation steps next session:
+1. Reproduce on clean tree: `rm -rf web/{photos,videos,thumbs,index.html,assets,.gallery_cache.json}; docker compose run --rm app -v` 5×, log which files fail per run → confirm flake distribution.
+2. Force `OMP_NUM_THREADS=1` + `MAGICK_THREAD_LIMIT=1` in `app` service env to neutralize IM internal threads. Re-run matrix.
+3. If JPEG flakes vanish → HEIC-only is sample-specific, swap sample.
+4. If HEIC still fails alone → trace inside `_image_worker` with `MAGICK_DEBUG=Cache,Resource` env to see which resource trips.
+5. Decide: (a) document as sample-data limit + cap `workers=2` in compose default, or (b) ship `MAGICK_THREAD_LIMIT=1` permanently, or (c) drop sample and find smaller HEIC fixture.
+
+Files: `src/simplegallery/builder.py:154-187` (image pipeline + ProcessPool), `src/simplegallery/image_processor.py:47-71` (wand calls), `docker/imagemagick-policy.xml` (resource policy), `docker-compose.yml` `app` service env.
+
+## Manual verify (recap)
+
+`docker compose up -d serve` → http://127.0.0.1:8080/. Stop: `docker compose stop serve`. Override port via `SIMPLEGALLERY_SERVE_PORT`.
 
 ---
 

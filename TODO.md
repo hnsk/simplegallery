@@ -95,9 +95,9 @@
 - [x] EXIF panel open: shift top-right buttons (close, EXIF, download, next-arrow) left by panel width via `:has(.exif-panel[data-open="true"])` so panel doesn't cover them; desktop only (≥769px), mobile sheet unaffected.
 - [x] `.lightbox-btn` transition extended to animate `right` change.
 - [x] `serve` compose service for host browser verify (`docker compose up -d serve` → http://127.0.0.1:8080/, ro mount `./web/`).
-- [ ] Manual browser verify against `./web/` via `serve` (arrows, EXIF toggle adjacent to X, download anchor, video poster).
-- [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up sheet.
-- [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` (substitute another HEIC sample, or accept as known sample-data quirk).
+- [x] Manual browser verify against `./web/` via `serve` (arrows, EXIF toggle adjacent to X, download anchor, video poster) — verified.
+- [ ] (deferred) Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up sheet.
+- [ ] Investigate HEIC time-limit race on `shelf-christmas-decoration.heic` + multi-worker JPEG flake (`cache.c/GetImagePixelCache/1743`). Single-worker only HEIC fails; workers≥4 JPEGs flake too. Likely IM pixel-cache contention across ProcessPool subprocesses (shared `/tmp` cache files?) + libheif/libde265 internal time limit on this specific HEIC sample.
 
 ## Step 10 — Web-root layout + recursive galleries + originals-as-full
 
