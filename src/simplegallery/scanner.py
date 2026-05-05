@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .config import Config
 from .slugify import slugify
 
 log = logging.getLogger(__name__)
+
+# Image extensions that need transcoding to JPEG for inline display. Anything
+# outside this set in `Config.image_extensions` is treated as browser-friendly
+# and referenced directly via its original URL.
+TRANSCODE_EXTS: frozenset[str] = frozenset({".heic", ".heif", ".tif", ".tiff"})
 
 
 @dataclass(frozen=True)
@@ -22,9 +27,14 @@ class MediaFile:
     size: int
     mtime: float
     output_thumb: Path
-    output_full: Path | None = None  # images
+    output_full: Path | None = None  # images requiring transcode (HEIC/TIFF)
     output_mp4: Path | None = None   # videos
     output_webm: Path | None = None  # videos
+    transcode_needed: bool = False
+    # Path to the original media relative to web_root (POSIX form). Used as
+    # data-src for browser-friendly images and as the lightbox download link
+    # for every media item. Empty for legacy callers that don't set it.
+    original_rel: PurePosixPath = field(default_factory=PurePosixPath)
 
     @property
     def is_image(self) -> bool:
@@ -44,7 +54,7 @@ class MediaFile:
 
 @dataclass
 class Gallery:
-    """A top-level subdirectory of source, treated as a single gallery."""
+    """A directory of media. May contain own media and/or nested subgalleries."""
 
     name: str
     slug: str
@@ -53,6 +63,13 @@ class Gallery:
     images: list[MediaFile] = field(default_factory=list)
     videos: list[MediaFile] = field(default_factory=list)
     cover_file: MediaFile | None = None
+    # Recursive layout fields. For legacy flat-mode scans, rel_path is empty,
+    # subgalleries is empty, breadcrumbs is empty.
+    rel_path: PurePosixPath = field(default_factory=PurePosixPath)
+    subgalleries: list["Gallery"] = field(default_factory=list)
+    # Ancestors + self chain as (name, rel_path). Renderer turns rel_path into
+    # an href relative to the page being rendered.
+    breadcrumbs: list[tuple[str, PurePosixPath]] = field(default_factory=list)
 
     @property
     def media(self) -> list[MediaFile]:
@@ -60,16 +77,35 @@ class Gallery:
 
     @property
     def count(self) -> int:
+        """Own media count (non-recursive)."""
         return len(self.images) + len(self.videos)
+
+    @property
+    def subcount(self) -> int:
+        """Direct subgallery count (non-recursive)."""
+        return len(self.subgalleries)
+
+    def walk(self) -> list["Gallery"]:
+        """DFS pre-order over self + all descendants."""
+        out: list[Gallery] = [self]
+        for sg in self.subgalleries:
+            out.extend(sg.walk())
+        return out
 
 
 class DirectoryScanner:
-    """Walk source directory, build Gallery list."""
+    """Walk source directory, build Gallery list (flat) or tree (recursive)."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
 
+    # ---- legacy flat scan (top-level subdirs only) -----------------------
     def scan(self) -> list[Gallery]:
+        """Top-level subdirectories of source as independent galleries.
+
+        Retained for callers that have not yet migrated to the recursive
+        layout (builder/renderer/watcher are migrated in later substeps).
+        """
         source = self.config.source
         if not source.is_dir():
             log.warning("source dir does not exist: %s", source)
@@ -85,26 +121,153 @@ class DirectoryScanner:
                 continue
             slug = slugify(entry.name, gallery_slugs)
             gallery_slugs.add(slug)
-            gallery = self._scan_gallery(entry, slug)
+            output_dir = self.config.output / slug
+            gallery = Gallery(
+                name=entry.name,
+                slug=slug,
+                source_dir=entry,
+                output_dir=output_dir,
+                rel_path=PurePosixPath(entry.name),
+            )
+            self._scan_files_into(entry, output_dir, gallery, rel_path=PurePosixPath(entry.name))
             if gallery.count == 0:
                 log.info("skipping empty gallery: %s", entry.name)
                 continue
+            gallery.cover_file = (
+                gallery.images[0] if gallery.images else (gallery.videos[0] if gallery.videos else None)
+            )
             galleries.append(gallery)
         return galleries
 
-    def _scan_gallery(self, source_dir: Path, slug: str) -> Gallery:
-        output_dir = self.config.output / slug
+    # ---- recursive tree scan --------------------------------------------
+    def scan_tree(self) -> Gallery | None:
+        """Return the root Gallery covering the entire source tree, or None
+        if the tree has no media at any depth.
+
+        Output dirs mirror source rel paths under `web_root` (Config.output).
+        Reserved names at the source root (`assets`, `index.html`,
+        `<gallery_subdir>`) are skipped with a warning to keep generated
+        output and source distinct.
+        """
+        source = self.config.source
+        if not source.is_dir():
+            log.warning("source dir does not exist: %s", source)
+            return None
+
+        title = self.config.title
+        root = self._scan_tree_dir(
+            path=source,
+            rel_path=PurePosixPath(),
+            name=title,
+            breadcrumbs=[(title, PurePosixPath())],
+            depth=0,
+        )
+        return root
+
+    def _scan_tree_dir(
+        self,
+        *,
+        path: Path,
+        rel_path: PurePosixPath,
+        name: str,
+        breadcrumbs: list[tuple[str, PurePosixPath]],
+        depth: int,
+    ) -> Gallery | None:
+        web_root = self.config.output
+        output_dir = web_root / rel_path if str(rel_path) else web_root
+        gallery_slug = slugify(name) if depth > 0 else slugify(name or "gallery")
         gallery = Gallery(
-            name=source_dir.name,
-            slug=slug,
-            source_dir=source_dir,
+            name=name,
+            slug=gallery_slug,
+            source_dir=path,
             output_dir=output_dir,
+            rel_path=rel_path,
+            breadcrumbs=breadcrumbs,
         )
 
         image_exts = self.config.image_extensions
         video_exts = self.config.video_extensions
+        direct_exts = self.config.direct_image_extensions
+        reserved = self.config.reserved_root_names
+
+        subdirs: list[Path] = []
         file_slugs: set[str] = set()
 
+        for entry in sorted(path.iterdir(), key=lambda p: p.name.lower()):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                if depth == 0 and entry.name in reserved:
+                    log.warning(
+                        "skipping reserved name at source root: %s (collides with output)",
+                        entry.name,
+                    )
+                    continue
+                subdirs.append(entry)
+                continue
+            if not entry.is_file():
+                continue
+            ext = entry.suffix.lower()
+            if ext in image_exts:
+                kind = "image"
+            elif ext in video_exts:
+                kind = "video"
+            else:
+                continue
+            try:
+                stat = entry.stat()
+            except OSError as exc:
+                log.warning("stat failed: %s (%s)", entry, exc)
+                continue
+            file_slug = slugify(entry.stem, file_slugs)
+            file_slugs.add(file_slug)
+            transcode = (kind == "image") and (ext not in direct_exts)
+            original_rel = PurePosixPath(self.config.gallery_subdir) / rel_path / entry.name
+            media = self._build_media(
+                source=entry,
+                kind=kind,
+                slug=file_slug,
+                size=stat.st_size,
+                mtime=stat.st_mtime,
+                output_dir=output_dir,
+                original_rel=original_rel,
+                transcode_needed=transcode,
+            )
+            if kind == "image":
+                gallery.images.append(media)
+            else:
+                gallery.videos.append(media)
+
+        for sub in subdirs:
+            sub_rel = rel_path / sub.name if str(rel_path) else PurePosixPath(sub.name)
+            sub_crumbs = [*breadcrumbs, (sub.name, sub_rel)]
+            sg = self._scan_tree_dir(
+                path=sub,
+                rel_path=sub_rel,
+                name=sub.name,
+                breadcrumbs=sub_crumbs,
+                depth=depth + 1,
+            )
+            if sg is not None:
+                gallery.subgalleries.append(sg)
+
+        if gallery.count == 0 and gallery.subcount == 0:
+            log.info("skipping empty gallery: %s", path)
+            return None
+
+        gallery.cover_file = (
+            gallery.images[0] if gallery.images else (gallery.videos[0] if gallery.videos else None)
+        )
+        return gallery
+
+    # ---- internals -------------------------------------------------------
+    def _scan_files_into(
+        self, source_dir: Path, output_dir: Path, gallery: Gallery, *, rel_path: PurePosixPath
+    ) -> None:
+        image_exts = self.config.image_extensions
+        video_exts = self.config.video_extensions
+        direct_exts = self.config.direct_image_extensions
+        file_slugs: set[str] = set()
         for f in sorted(source_dir.iterdir(), key=lambda p: p.name.lower()):
             if not f.is_file():
                 continue
@@ -117,32 +280,50 @@ class DirectoryScanner:
                 kind = "video"
             else:
                 continue
-
             try:
                 stat = f.stat()
             except OSError as exc:
                 log.warning("stat failed: %s (%s)", f, exc)
                 continue
-
             file_slug = slugify(f.stem, file_slugs)
             file_slugs.add(file_slug)
-            media = self._build_media(f, kind, file_slug, stat.st_size, stat.st_mtime, output_dir)
+            transcode = (kind == "image") and (ext not in direct_exts)
+            original_rel = PurePosixPath(self.config.gallery_subdir) / rel_path / f.name
+            # Legacy flat scan: keep the always-emit-output_full behavior so
+            # existing builder/image_processor tests keep passing. The
+            # tree-mode scanner uses the conditional path.
+            media = self._build_media(
+                source=f,
+                kind=kind,
+                slug=file_slug,
+                size=stat.st_size,
+                mtime=stat.st_mtime,
+                output_dir=output_dir,
+                original_rel=original_rel,
+                transcode_needed=transcode,
+                emit_full_for_all_images=True,
+            )
             if kind == "image":
                 gallery.images.append(media)
             else:
                 gallery.videos.append(media)
 
-        gallery.cover_file = gallery.images[0] if gallery.images else (
-            gallery.videos[0] if gallery.videos else None
-        )
-        return gallery
-
     @staticmethod
     def _build_media(
-        source: Path, kind: str, slug: str, size: int, mtime: float, output_dir: Path
+        *,
+        source: Path,
+        kind: str,
+        slug: str,
+        size: int,
+        mtime: float,
+        output_dir: Path,
+        original_rel: PurePosixPath,
+        transcode_needed: bool,
+        emit_full_for_all_images: bool = False,
     ) -> MediaFile:
         thumb = output_dir / "thumbs" / f"{slug}.webp"
         if kind == "image":
+            include_full = emit_full_for_all_images or transcode_needed
             return MediaFile(
                 source=source,
                 kind=kind,
@@ -150,7 +331,9 @@ class DirectoryScanner:
                 size=size,
                 mtime=mtime,
                 output_thumb=thumb,
-                output_full=output_dir / "full" / f"{slug}.jpg",
+                output_full=(output_dir / "full" / f"{slug}.jpg") if include_full else None,
+                transcode_needed=transcode_needed,
+                original_rel=original_rel,
             )
         return MediaFile(
             source=source,
@@ -161,4 +344,6 @@ class DirectoryScanner:
             output_thumb=thumb,
             output_mp4=output_dir / "video" / f"{slug}.mp4",
             output_webm=output_dir / "video" / f"{slug}.webm",
+            transcode_needed=False,
+            original_rel=original_rel,
         )
