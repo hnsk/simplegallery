@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from wand.image import Image as WandImage
 
+from simplegallery import builder as builder_mod
 from simplegallery.image_processor import (
     FULL_QUALITY,
     THUMB_HEIGHT,
@@ -127,3 +128,57 @@ def test_heic_full_converts_to_jpeg(heic_sample: Path, tmp_path: Path) -> None:
     generate_full(heic_sample, dst)
     with WandImage(filename=str(dst)) as img:
         assert img.format.upper() == "JPEG"
+
+
+# --- gate: builder._image_worker only runs generate_full when full is set ---
+
+
+def _record_calls(monkeypatch: pytest.MonkeyPatch) -> tuple[list[Path], list[Path]]:
+    thumb_calls: list[Path] = []
+    full_calls: list[Path] = []
+
+    def fake_thumb(src: Path, dst: Path) -> None:
+        thumb_calls.append(src)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"thumb")
+
+    def fake_full(src: Path, dst: Path) -> None:
+        full_calls.append(src)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"full")
+
+    monkeypatch.setattr(builder_mod.image_processor, "generate_thumbnail", fake_thumb)
+    monkeypatch.setattr(builder_mod.image_processor, "generate_full", fake_full)
+    return thumb_calls, full_calls
+
+
+def test_image_worker_runs_full_when_path_provided(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    thumbs, fulls = _record_calls(monkeypatch)
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"x")
+    thumb = tmp_path / "out" / "thumbs" / "src.webp"
+    full = tmp_path / "out" / "full" / "src.jpg"
+
+    builder_mod._image_worker((src, thumb, full))
+
+    assert thumbs == [src]
+    assert fulls == [src]
+
+
+def test_image_worker_skips_full_when_path_is_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Direct-served formats (jpg/png/webp/...) pass full=None — only the
+    thumbnail is produced; the original is referenced as-is for inline view.
+    """
+    thumbs, fulls = _record_calls(monkeypatch)
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"x")
+    thumb = tmp_path / "out" / "thumbs" / "src.webp"
+
+    builder_mod._image_worker((src, thumb, None))
+
+    assert thumbs == [src]
+    assert fulls == []

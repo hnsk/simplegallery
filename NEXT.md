@@ -6,6 +6,7 @@ Completed substeps:
 1. **Config** — done. `Config(web_root, gallery_subdir)`; `source`/`output` derived. Env: `SIMPLEGALLERY_WEB`, `SIMPLEGALLERY_GALLERY_SUBDIR`. CLI: `--web`, `--gallery-subdir` added; legacy `--source`/`--output` kept transitionally. Reserved-name set + `direct_image_extensions` introduced. Tests in `tests/test_config.py`.
 2. **Scanner** — done. New `DirectoryScanner.scan_tree()` returns recursive root `Gallery` (or `None`). `Gallery` gains `subgalleries`/`rel_path`/`breadcrumbs`/`subcount`/`walk()`. Reserved root-level names skipped + warned only at depth 0. Empty branches pruned. `MediaFile` gains `transcode_needed` + `original_rel`; tree-mode emits `output_full` only when transcode needed (HEIC/TIFF). Legacy flat `scan()` still works for builder/renderer/watcher until their substeps. Tests in `tests/test_scanner_tree.py` (15 cases).
 3. **Cache** — done. `BuildCache(output, reserved_root_names=...)`; builder threads `Config.reserved_root_names` through. `prune` rewritten: walks galleries via `Gallery.walk()`, removes only cache-tracked orphan files, then rmdirs empty ancestor dirs upward, stopping at `output` and reserved top-levels (`gallery/`, `assets/`). Untracked dirs/files left alone. Tests rewritten in `tests/test_cache.py` (12 pass): nested-layout prune, untracked-orphan preservation, reserved-root collapse guard, shared-output protection.
+4. **Image processor** — done. Builder `_process_images` no longer asserts `output_full is not None`; it passes `media.output_full` through (which is `None` for direct-served formats in tree mode). `_image_worker` skips `generate_full` when full is `None` — the original is referenced as `data-src` instead. Legacy flat scan still emits `output_full` for every image so existing renderer/builder/watcher tests keep passing during transition. `image_processor` module docstring documents GPS-stays for direct-served originals (we only strip on the HEIC/TIFF JPEG derivative). New worker gate tests in `tests/test_image_processor.py`. Suite: 97 pass; 2 pre-existing sample-data flakes (`129679.jpg` time-limit, `shelf-christmas-decoration.heic`).
 
 Goal recap:
 - Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
@@ -22,13 +23,13 @@ Decisions locked:
 4. Subgallery card shows own media count + non-recursive subgallery count.
 5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-Next substep: **Image processor (10.4)** — `generate_full` only invoked when `transcode_needed` is true. Builder feeds the conditional `output_full` (already None for direct-served formats in tree mode). Document GPS-stays for direct-served formats since we don't strip from originals. Update `tests/test_image_processor.py` to cover the new gate.
+Next substep: **Builder (10.5)** — switch builder from `scanner.scan()` (flat) to `scanner.scan_tree()` (recursive). DFS-walk the root gallery: collect media across the whole tree for the image/video pools, render every non-empty gallery page (root + every subgallery). Drop the separate `render_index` call (root gallery uses the same page template). Cache prune already accepts the recursive root via `Gallery.walk()`. Partial-rebuild path (`build_galleries(names)`) needs the dirty-unit semantics revisited — substep 10.8 (watcher) finalizes that, but builder needs to at least accept "rebuild gallery at rel_path" without breaking the old name-based API. Plan: introduce `build_tree()` as new full-build entrypoint; keep `build_galleries(names)` calling the old flat path until watcher migrates. Tests: extend `tests/test_renderer.py` (or new `tests/test_builder_tree.py`) to cover root + nested page output, only HEIC produces `full/`, originals referenced via relative path.
 
 Order of attack:
 1. ~~Config (env + dataclass).~~ done
 2. ~~Scanner (recursive, new `Gallery` shape, reserved names, transcode_needed flag on `MediaFile`).~~ done
 3. ~~Cache (path-keyed verified; recursive-aware prune; reserved roots).~~ done
-4. Image processor (skip `generate_full` when not transcode_needed).
+4. ~~Image processor (skip `generate_full` when not transcode_needed).~~ done
 5. Builder (DFS walk).
 6. Renderer + templates (breadcrumbs, subgallery cards, original href, download button; drop separate index template).
 7. Frontend (download button + subgallery + breadcrumb styling).
@@ -42,5 +43,5 @@ Per substep: update TODO.md + NEXT.md + commit.
 
 How to reproduce so far:
 - Build: `docker compose build app`
-- Tests: `docker compose run --rm test` (96 pass; 1 known pre-Step-10 HEIC flake on `shelf-christmas-decoration.heic`)
+- Tests: `docker compose run --rm test` (97 pass; 2 known pre-Step-10 sample-data flakes on `129679.jpg` and `shelf-christmas-decoration.heic`)
 - Smoke (current pre-Step-10 layout): `docker compose run --rm app -v` (will be replaced with `/web` layout in Step 10).

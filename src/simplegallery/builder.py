@@ -103,13 +103,17 @@ class GalleryBuilder:
             return exif
 
         workers = max(1, int(self.config.workers))
-        stale_specs: list[tuple[Path, Path, Path]] = []
+        stale_specs: list[tuple[Path, Path, Path | None]] = []
         media_by_src: dict[Path, MediaFile] = {}
         for media in images:
             media_by_src[media.source] = media
             if self.cache.is_stale(media):
-                assert media.output_full is not None
-                stale_specs.append((media.source, media.output_thumb, media.output_full))
+                # output_full is set iff a JPEG derivative is needed (HEIC/TIFF
+                # in tree mode). Browser-friendly originals (jpg/png/webp/...)
+                # have output_full=None and are referenced directly.
+                stale_specs.append(
+                    (media.source, media.output_thumb, media.output_full)
+                )
 
         with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
             futures = {pool.submit(_image_worker, spec): spec for spec in stale_specs}
@@ -169,10 +173,11 @@ class GalleryBuilder:
         return out
 
 
-def _image_worker(spec: tuple[Path, Path, Path]) -> None:
+def _image_worker(spec: tuple[Path, Path, Path | None]) -> None:
     src, thumb, full = spec
     image_processor.generate_thumbnail(src, thumb)
-    image_processor.generate_full(src, full)
+    if full is not None:
+        image_processor.generate_full(src, full)
 
 
 def _exif_worker(src: Path) -> dict:

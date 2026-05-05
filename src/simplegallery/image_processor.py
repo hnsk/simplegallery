@@ -2,6 +2,13 @@
 
 Backed by Wand (ImageMagick + libheif). EXIF read uses Wand's metadata first and
 falls back to exifread for formats / tags Wand misses.
+
+Privacy note on GPS metadata: ``generate_full`` strips EXIF GPS tags from the
+JPEG derivative it produces. Derivatives are only generated for formats that
+need transcoding (HEIC/HEIF/TIFF). Browser-friendly originals (jpg/jpeg/png/
+webp/gif/avif) are served directly from ``<gallery_subdir>/`` without
+modification, so any GPS tags they carry remain in the file the visitor
+downloads. Strip GPS upstream if that matters for the source set.
 """
 
 from __future__ import annotations
