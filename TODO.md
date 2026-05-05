@@ -61,11 +61,12 @@
 - [ ] `tests/test_video_processor.py` — `probe()` returns expected fields; thumb generated; mp4 + webm produced; transcode tests marked `@pytest.mark.slow`
 
 ## Step 7 — Docker
-- [ ] `Dockerfile` — `python:3.12-alpine`, `apk add --no-cache imagemagick imagemagick-dev libheif-dev libwebp-dev tiff-dev ffmpeg`, pip install (incl. `pytest`), VOLUME, ENTRYPOINT
-- [ ] `docker/imagemagick-policy.xml` — raise memory cap to 2GiB, allow all formats
-- [ ] `docker-compose.yml`
+- [x] `Dockerfile` — `python:3.12-alpine`, `apk add --no-cache imagemagick imagemagick-dev libheif-dev libwebp-dev tiff-dev ffmpeg`, pip install (incl. `pytest`), VOLUME, ENTRYPOINT
+- [x] `docker/imagemagick-policy.xml` — raise memory cap to 2GiB, allow all formats
+- [x] `docker-compose.yml`
   - `app` service — source `:ro` mount, output mount, env vars with defaults, `restart: unless-stopped`
   - `test` service — same image, command `pytest -v`, mounts `src/` + `tests/`, no restart
+  - `shell` service — interactive sh for ad-hoc checks (added per CLAUDE.md no-host-Python rule)
 
 ## Step 8 — Watcher
 - [ ] `src/simplegallery/watcher.py` — watchdog `FileSystemEventHandler`; thread-safe dirty-slug set; debounced `threading.Timer` (default 2s) → `builder.build_galleries(dirty_slugs)` + re-render index; handles `DirCreatedEvent` / `DirDeletedEvent` / `DirMovedEvent` on top-level subdirs (rebuild index, prune removed slugs); `WatcherService.start()` blocks on `observer.join()`

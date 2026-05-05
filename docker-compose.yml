@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      context: .
+    image: simplegallery:dev
+    environment:
+      SIMPLEGALLERY_SOURCE: /source
+      SIMPLEGALLERY_OUTPUT: /output
+      SIMPLEGALLERY_TITLE: ${SIMPLEGALLERY_TITLE:-Gallery}
+      SIMPLEGALLERY_WORKERS: ${SIMPLEGALLERY_WORKERS:-4}
+      SIMPLEGALLERY_LOG_LEVEL: ${SIMPLEGALLERY_LOG_LEVEL:-INFO}
+    volumes:
+      - ${SIMPLEGALLERY_SOURCE_DIR:-./source}:/source:ro
+      - ${SIMPLEGALLERY_OUTPUT_DIR:-./output}:/output
+    restart: unless-stopped
+
+  test:
+    build:
+      context: .
+    image: simplegallery:dev
+    entrypoint: ["pytest"]
+    command: ["-v"]
+    working_dir: /app
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    restart: "no"
+
+  shell:
+    build:
+      context: .
+    image: simplegallery:dev
+    entrypoint: ["sh"]
+    command: ["-c", "exec sh"]
+    working_dir: /app
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    restart: "no"

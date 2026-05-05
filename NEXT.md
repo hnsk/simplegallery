@@ -2,6 +2,11 @@
 
 Step 2 — Scanner + cache.
 
+Status:
+- Step 0 done.
+- Step 1 done. CLI smoke (`docker compose run --rm app --help`) verified.
+- Step 7 done early (out of TODO order, user-approved). `simplegallery:dev` image builds; `docker compose run --rm test` passes 3 smoke tests. Test service mounts `src/` + `tests/` so iteration does not need rebuild.
+
 Create:
 - `src/simplegallery/slugify.py` — `slugify(name)` → ascii, lowercase, hyphenated, collision-safe.
 - `src/simplegallery/scanner.py` — `MediaFile`, `Gallery` dataclasses (incl. `slug`); `DirectoryScanner.scan()` — top-level subdirs only, split image/video by ext, derive output paths via slug, set `cover_file`.
@@ -10,8 +15,8 @@ Create:
 - `tests/test_scanner.py` — tmp source tree, assert image/video split, slug mapping, cover selection.
 - `tests/test_cache.py` — stale detection, prune, atomic save.
 
-Constraints:
-- No host Python. Tests must wait for Step 7 Docker, or add a temporary `shell`/`test` service early if validation needed sooner — ask user before adding.
-- After Step 2: update TODO.md + NEXT.md, commit, then Step 3 (renderer + templates).
+How to run during Step 2:
+- Tests: `docker compose run --rm test`
+- Ad-hoc shell: `docker compose run --rm shell`
 
-Status of Step 1: complete. `pyproject.toml`, `src/simplegallery/{__init__,config,cli,__main__}.py` written. Not yet executed (host run forbidden by CLAUDE.md).
+After Step 2: update TODO.md + NEXT.md, commit, then Step 3 (renderer + templates).
