@@ -83,57 +83,14 @@ class GalleryBuilder:
         names: set[str] | None,
         rebuild_index: bool = True,
     ) -> list[Path]:
-        """Partial rebuild via the legacy flat scan.
+        """Watcher entrypoint — currently routes to a full ``build_tree()``.
 
-        Retained for the watcher until substep 10.8 migrates it to the
-        recursive layout. ``names=None`` falls through to a full flat-mode
-        build; an empty set only re-renders the index; a non-empty set
-        processes only matching top-level galleries.
+        Per-dir dirty propagation under the recursive layout lands in substep
+        10.8; until then any change triggers a full rebuild. ``names`` and
+        ``rebuild_index`` are accepted for API stability but ignored.
         """
-        return self._build(selected_names=names, rebuild_index=rebuild_index)
-
-    # --- internal -------------------------------------------------------
-
-    def _build(
-        self,
-        selected_names: set[str] | None,
-        rebuild_index: bool,
-    ) -> list[Path]:
-        self.config.output.mkdir(parents=True, exist_ok=True)
-        self.cache.load()
-        galleries = self.scanner.scan()
-        log.info("scanned %d galler%s", len(galleries), "y" if len(galleries) == 1 else "ies")
-
-        removed = self.cache.prune(galleries)
-        for path in removed:
-            log.info("pruned: %s", path)
-
-        self.renderer.copy_assets()
-
-        if selected_names is None:
-            selected = galleries
-        else:
-            selected = [g for g in galleries if g.source_dir.name in selected_names]
-            missing = selected_names - {g.source_dir.name for g in galleries}
-            if missing:
-                log.info("dirty galleries no longer present: %s", sorted(missing))
-
-        images = [m for g in selected for m in g.images]
-        exif_by_path = self._process_images(images)
-
-        videos = [m for g in selected for m in g.videos]
-        self._process_videos(videos)
-
-        rendered: list[Path] = []
-        if rebuild_index:
-            rendered.append(self.renderer.render_index(galleries))
-        for gallery in selected:
-            exif_map = self._exif_for_gallery(gallery, exif_by_path)
-            rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
-
-        self.cache.save()
-        log.info("rendered %d page(s)", len(rendered))
-        return rendered
+        del names, rebuild_index
+        return self.build_tree()
 
     # --- image pipeline -------------------------------------------------
 

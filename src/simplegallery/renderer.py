@@ -1,4 +1,12 @@
-"""HTML rendering: copy hashed static assets and render index + gallery pages."""
+"""HTML rendering: copy hashed static assets and render gallery pages.
+
+Single template (`gallery.html.j2`) handles every page including the root.
+Each page receives breadcrumbs, a subgallery card grid (above) and the media
+grid (below). Lightbox `data-src` points at the JPEG derivative when one was
+generated (HEIC/HEIF/TIFF) and at the original otherwise. `data-original`
+always points at the user's original file so the lightbox download button has
+something to grab.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +18,6 @@ import shutil
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Iterable
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -36,7 +43,7 @@ class Asset:
 
 
 class Renderer:
-    """Render index + gallery pages and copy hashed static assets."""
+    """Render gallery pages and copy hashed static assets."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -91,19 +98,6 @@ class Renderer:
 
     # --- rendering ------------------------------------------------------
 
-    def render_index(self, galleries: Iterable[Gallery]) -> Path:
-        galleries = list(galleries)
-        out_path = self.config.output / INDEX_FILENAME
-        page_dir = out_path.parent
-        ctx = {
-            "site_title": self.config.title,
-            "galleries": [self._index_entry(g, page_dir) for g in galleries],
-            "assets": self._page_assets(page_dir),
-        }
-        template = self.env.get_template("index.html.j2")
-        self._write(out_path, template.render(**ctx))
-        return out_path
-
     def render_gallery(
         self,
         gallery: Gallery,
@@ -111,16 +105,19 @@ class Renderer:
     ) -> Path:
         out_path = gallery.output_dir / INDEX_FILENAME
         page_dir = out_path.parent
-        index_path = self.config.output / INDEX_FILENAME
         exif_map = exif or {}
         ctx = {
             "site_title": self.config.title,
             "gallery": gallery,
+            "is_root": not str(gallery.rel_path),
+            "breadcrumbs": self._breadcrumbs(gallery, page_dir),
+            "subgalleries": [
+                self._subgallery_card(sg, page_dir) for sg in gallery.subgalleries
+            ],
             "items": [
                 self._gallery_item(m, page_dir, exif_map.get(m.slug))
                 for m in gallery.media
             ],
-            "index_href": self._rel(index_path, page_dir),
             "assets": self._page_assets(page_dir),
         }
         template = self.env.get_template("gallery.html.j2")
@@ -140,19 +137,34 @@ class Renderer:
             out[short] = self._rel(absolute, page_dir)
         return out
 
-    def _index_entry(self, gallery: Gallery, page_dir: Path) -> dict:
+    def _breadcrumbs(self, gallery: Gallery, page_dir: Path) -> list[dict]:
+        """Return [{name, href}] — last entry has href=None (current page)."""
+        crumbs = gallery.breadcrumbs or [(gallery.name, gallery.rel_path)]
+        web_root = self.config.output
+        out: list[dict] = []
+        last = len(crumbs) - 1
+        for i, (name, rel) in enumerate(crumbs):
+            if i == last:
+                out.append({"name": name, "href": None})
+                continue
+            target = web_root / rel / INDEX_FILENAME if str(rel) else web_root / INDEX_FILENAME
+            out.append({"name": name, "href": self._rel(target, page_dir)})
+        return out
+
+    def _subgallery_card(self, sg: Gallery, page_dir: Path) -> dict:
+        target = sg.output_dir / INDEX_FILENAME
         cover_thumb = (
-            self._rel(gallery.cover_file.output_thumb, page_dir)
-            if gallery.cover_file is not None
+            self._rel(sg.cover_file.output_thumb, page_dir)
+            if sg.cover_file is not None
             else None
         )
-        gallery_index = gallery.output_dir / INDEX_FILENAME
         return {
-            "name": gallery.name,
-            "slug": gallery.slug,
-            "href": self._rel(gallery_index, page_dir),
+            "name": sg.name,
+            "slug": sg.slug,
+            "href": self._rel(target, page_dir),
             "cover_thumb": cover_thumb,
-            "count": gallery.count,
+            "count": sg.count,
+            "subcount": sg.subcount,
         }
 
     def _gallery_item(
@@ -161,14 +173,25 @@ class Renderer:
         page_dir: Path,
         exif: dict | None = None,
     ) -> dict:
+        original_abs = self.config.output / media.original_rel if str(media.original_rel) else None
+        original_href = self._rel(original_abs, page_dir) if original_abs is not None else None
+        if media.is_image:
+            if media.output_full is not None:
+                src_href = self._rel(media.output_full, page_dir)
+            else:
+                src_href = original_href
+        else:
+            src_href = None
         item: dict[str, object] = {
             "kind": media.kind,
             "name": media.source.name,
             "slug": media.slug,
             "thumb": self._rel(media.output_thumb, page_dir),
         }
-        if media.output_full is not None:
-            item["full"] = self._rel(media.output_full, page_dir)
+        if src_href is not None:
+            item["src"] = src_href
+        if original_href is not None:
+            item["original"] = original_href
         if media.output_mp4 is not None:
             item["mp4"] = self._rel(media.output_mp4, page_dir)
         if media.output_webm is not None:

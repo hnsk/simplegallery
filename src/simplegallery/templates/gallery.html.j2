@@ -1,17 +1,34 @@
 {% extends "base.html.j2" %}
-{% block title %}{{ gallery.name }} — {{ site_title }}{% endblock %}
+{% block title %}{% if is_root %}{{ site_title }}{% else %}{{ gallery.name }} — {{ site_title }}{% endif %}{% endblock %}
 {% block body %}
 <header class="gallery-header">
-  <p><a href="{{ index_href }}">&larr; {{ site_title }}</a></p>
+  {% include "_breadcrumbs.html.j2" %}
   <h1>{{ gallery.name }}</h1>
 </header>
 <main>
+  {% if subgalleries %}
+  <ul class="subgallery-grid">
+    {% for sg in subgalleries %}
+    <li class="subgallery-card{% if not sg.cover_thumb %} subgallery-card--text{% endif %}" data-slug="{{ sg.slug }}">
+      <a href="{{ sg.href }}">
+        {% if sg.cover_thumb %}
+        <img src="{{ sg.cover_thumb }}" alt="{{ sg.name }}" loading="lazy">
+        {% endif %}
+        <h2>{{ sg.name }}</h2>
+        <p class="count">{{ sg.count }} item{{ '' if sg.count == 1 else 's' }}{% if sg.subcount %} · {{ sg.subcount }} subgaller{{ 'y' if sg.subcount == 1 else 'ies' }}{% endif %}</p>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if items %}
   <div class="gallery-grid" data-gallery="{{ gallery.slug }}">
     {% for item in items %}
     <figure
       data-kind="{{ item.kind }}"
       data-thumb="{{ item.thumb }}"
-      {% if item.full %}data-src="{{ item.full }}"{% endif %}
+      {% if item.src %}data-src="{{ item.src }}"{% endif %}
+      {% if item.original %}data-original="{{ item.original }}"{% endif %}
       {% if item.mp4 %}data-mp4="{{ item.mp4 }}"{% endif %}
       {% if item.webm %}data-webm="{{ item.webm }}"{% endif %}
       {% if item.exif %}data-exif='{{ item.exif }}'{% endif %}
@@ -20,5 +37,6 @@
     </figure>
     {% endfor %}
   </div>
+  {% endif %}
 </main>
 {% endblock %}

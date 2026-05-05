@@ -1,4 +1,4 @@
-"""Renderer: hashed asset copy, depth-correct relative paths, page output."""
+"""Renderer: hashed asset copy, tree-mode pages, breadcrumbs, subgallery cards."""
 
 from __future__ import annotations
 
@@ -19,18 +19,21 @@ def _touch(path: Path, content: bytes = b"x") -> None:
 
 
 @pytest.fixture
-def src(tmp_path: Path) -> Path:
-    s = tmp_path / "source"
-    _touch(s / "Trip A" / "img1.jpg")
-    _touch(s / "Trip A" / "img2.png")
-    _touch(s / "Trip A" / "clip.mp4")
-    _touch(s / "Trip B" / "movie.mov")
-    return s
+def web(tmp_path: Path) -> Path:
+    """web/gallery/ tree exercising root media, nested subs, and HEIC transcode."""
+    web = tmp_path / "web"
+    g = web / "gallery"
+    _touch(g / "cover.jpg")
+    _touch(g / "photos" / "a.heic")
+    _touch(g / "photos" / "a.jpg")
+    _touch(g / "photos" / "macro" / "close.png")
+    _touch(g / "videos" / "clip.mp4")
+    return web
 
 
 @pytest.fixture
-def cfg(src: Path, tmp_path: Path) -> Config:
-    return Config(source=src, output=tmp_path / "output", title="My Gallery")
+def cfg(web: Path) -> Config:
+    return Config(web_root=web, title="My Gallery")
 
 
 def test_copy_assets_emits_hashed_files(cfg: Config) -> None:
@@ -39,7 +42,7 @@ def test_copy_assets_emits_hashed_files(cfg: Config) -> None:
     assets = renderer.copy_assets()
 
     assets_dir = cfg.output / ASSETS_DIRNAME
-    assert (assets_dir).is_dir()
+    assert assets_dir.is_dir()
     css_path = cfg.output / assets["gallery.css"].rel_output
     js_path = cfg.output / assets["gallery.js"].rel_output
     assert css_path.is_file()
@@ -56,59 +59,166 @@ def test_copy_assets_is_deterministic(cfg: Config) -> None:
     assert a1["gallery.js"].rel_output == a2["gallery.js"].rel_output
 
 
-def test_render_index_uses_root_relative_assets(cfg: Config) -> None:
-    galleries = DirectoryScanner(cfg).scan()
+def test_render_root_page_uses_root_relative_assets(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
     cfg.output.mkdir(parents=True, exist_ok=True)
     renderer = Renderer(cfg)
     assets = renderer.copy_assets()
-    out = renderer.render_index(galleries)
+    out = renderer.render_gallery(root)
 
     html = out.read_text(encoding="utf-8")
-    expected_css = assets["gallery.css"].rel_output
-    expected_js = assets["gallery.js"].rel_output
-    assert f'href="{expected_css}"' in html
-    assert f'src="{expected_js}"' in html
+    assert f'href="{assets["gallery.css"].rel_output}"' in html
+    assert f'src="{assets["gallery.js"].rel_output}"' in html
     assert "My Gallery" in html
-    # gallery card links are <slug>/index.html (no leading "../")
-    assert 'href="trip-a/index.html"' in html
-    assert 'href="trip-b/index.html"' in html
-    # cover thumbnails are root-relative
-    assert "trip-a/thumbs/img1.webp" in html
 
 
-def test_render_gallery_uses_depth_correct_relative_paths(cfg: Config) -> None:
-    galleries = DirectoryScanner(cfg).scan()
+def test_render_root_breadcrumb_is_current_only(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
     cfg.output.mkdir(parents=True, exist_ok=True)
     renderer = Renderer(cfg)
-    assets = renderer.copy_assets()
-    trip_a = next(g for g in galleries if g.slug == "trip-a")
-    out = renderer.render_gallery(trip_a)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
 
     html = out.read_text(encoding="utf-8")
-    # asset is one dir up
-    assert f'href="../{assets["gallery.css"].rel_output}"' in html
-    assert f'src="../{assets["gallery.js"].rel_output}"' in html
-    # back-link to index.html one level up
-    assert 'href="../index.html"' in html
-    # thumb references are gallery-relative (no slug prefix, no "../")
-    assert 'data-thumb="thumbs/img1.webp"' in html
-    assert 'data-src="full/img1.jpg"' in html
+    assert '<nav class="breadcrumbs"' in html
+    # root crumb is current page → span, not anchor
+    assert '<span aria-current="page">My Gallery</span>' in html
+
+
+def test_render_nested_breadcrumb_links_back_to_ancestors(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    macro = photos.subgalleries[0]
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(macro)
+
+    html = out.read_text(encoding="utf-8")
+    # ancestors are anchors, current is a span
+    assert 'href="../../index.html">My Gallery</a>' in html
+    assert 'href="../index.html">photos</a>' in html
+    assert '<span aria-current="page">macro</span>' in html
+
+
+def test_render_root_subgallery_cards_show_counts(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
+
+    html = out.read_text(encoding="utf-8")
+    # root has photos + videos as subgalleries
+    assert 'href="photos/index.html"' in html
+    assert 'href="videos/index.html"' in html
+    # photos has 2 own items + 1 sub (macro)
+    assert "2 items · 1 subgallery" in html
+    # videos has 1 own item, no subs
+    assert "1 item</p>" in html
+
+
+def test_render_text_only_subgallery_card_when_no_own_media(tmp_path: Path) -> None:
+    """A subgallery with only nested children renders without a cover thumb."""
+    web = tmp_path / "web"
+    _touch(web / "gallery" / "year" / "trip" / "img.jpg")
+    cfg = Config(web_root=web, title="Site")
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(root)
+
+    html = out.read_text(encoding="utf-8")
+    assert "subgallery-card--text" in html
+    # no <img> inside the year card
+    assert 'src="year/' not in html
+
+
+def test_render_browser_friendly_image_uses_original_for_data_src(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(photos)
+
+    html = out.read_text(encoding="utf-8")
+    # a.jpg (browser-friendly) → data-src points at original under gallery/photos/
+    # NB: heic sorts before jpg under name.lower(); jpg gets slug "a-2".
+    assert 'data-thumb="thumbs/a-2.webp"' in html
+    assert 'data-src="../gallery/photos/a.jpg"' in html
+    # data-original always points at the original
+    assert 'data-original="../gallery/photos/a.jpg"' in html
+
+
+def test_render_transcoded_image_uses_derivative_for_data_src(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(photos)
+
+    html = out.read_text(encoding="utf-8")
+    # a.heic → derivative full/a.jpg as data-src; data-original keeps .heic
+    assert 'data-src="full/a.jpg"' in html
+    assert 'data-original="../gallery/photos/a.heic"' in html
+
+
+def test_render_video_data_original_points_at_source(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    videos = next(g for g in root.subgalleries if g.name == "videos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(videos)
+
+    html = out.read_text(encoding="utf-8")
     assert 'data-mp4="video/clip.mp4"' in html
     assert 'data-webm="video/clip.webm"' in html
+    assert 'data-original="../gallery/videos/clip.mp4"' in html
 
 
-def test_builder_build_all_renders_index_and_each_gallery(cfg: Config) -> None:
+def test_render_nested_page_climbs_two_dirs_for_assets(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    macro = photos.subgalleries[0]
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    assets = renderer.copy_assets()
+    out = renderer.render_gallery(macro)
+
+    html = out.read_text(encoding="utf-8")
+    assert f'href="../../{assets["gallery.css"].rel_output}"' in html
+    assert f'src="../../{assets["gallery.js"].rel_output}"' in html
+
+
+def test_builder_build_all_renders_root_and_each_gallery(cfg: Config) -> None:
     rendered = GalleryBuilder(cfg).build_all()
-    rendered_set = {p.relative_to(cfg.output).as_posix() for p in rendered}
-    # Tree mode: root gallery → index.html; subgallery dirs use raw names.
-    assert "index.html" in rendered_set
-    assert "Trip A/index.html" in rendered_set
-    assert "Trip B/index.html" in rendered_set
+    rel = {p.relative_to(cfg.output).as_posix() for p in rendered}
+    assert rel == {
+        "index.html",
+        "photos/index.html",
+        "photos/macro/index.html",
+        "videos/index.html",
+    }
     assert (cfg.output / ASSETS_DIRNAME).is_dir()
 
 
 def test_render_before_copy_assets_raises(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
     cfg.output.mkdir(parents=True, exist_ok=True)
     renderer = Renderer(cfg)
     with pytest.raises(RuntimeError):
-        renderer.render_index([])
+        renderer.render_gallery(root)
