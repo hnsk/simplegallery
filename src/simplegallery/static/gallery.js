@@ -79,6 +79,7 @@
       '<div class="lightbox-stage">' +
         '<button type="button" class="lightbox-btn lightbox-close" aria-label="Close">×</button>' +
         '<button type="button" class="lightbox-btn lightbox-info" aria-label="Toggle EXIF">i</button>' +
+        '<a class="lightbox-btn lightbox-download" aria-label="Download original" download hidden>↓</a>' +
         '<button type="button" class="lightbox-btn lightbox-prev" aria-label="Previous">‹</button>' +
         '<button type="button" class="lightbox-btn lightbox-next" aria-label="Next">›</button>' +
         '<img class="lightbox-media lightbox-image" alt="" hidden>' +
@@ -94,6 +95,7 @@
     this.root = root;
     this.image = root.querySelector(".lightbox-image");
     this.video = root.querySelector(".lightbox-video");
+    this.download = root.querySelector(".lightbox-download");
     this.exif = new ExifPanel(root.querySelector(".exif-panel"));
 
     var self = this;
@@ -186,8 +188,32 @@
       this.image.src = item.src || item.thumb || "";
       this.image.alt = item.name || "";
     }
+    this._setDownload(item);
     this.exif.render(item.exif);
   };
+
+  Lightbox.prototype._setDownload = function (item) {
+    if (!this.download) return;
+    var href = item.original || "";
+    if (!href) {
+      this.download.hidden = true;
+      this.download.removeAttribute("href");
+      this.download.removeAttribute("download");
+      return;
+    }
+    this.download.hidden = false;
+    this.download.href = href;
+    var name = filenameFromPath(href) || item.name || "";
+    if (name) this.download.setAttribute("download", name);
+    else this.download.setAttribute("download", "");
+  };
+
+  function filenameFromPath(href) {
+    if (!href) return "";
+    var clean = href.split("?")[0].split("#")[0];
+    var parts = clean.split("/");
+    return decodeURIComponent(parts[parts.length - 1] || "");
+  }
 
   Lightbox.prototype._preloadNeighbors = function () {
     var n = this.items.length;
@@ -267,6 +293,7 @@
       name: (fig.querySelector("img") && fig.querySelector("img").alt) || "",
       thumb: fig.dataset.thumb || (fig.querySelector("img") && fig.querySelector("img").src) || "",
       src: fig.dataset.src || "",
+      original: fig.dataset.original || "",
       mp4: fig.dataset.mp4 || "",
       webm: fig.dataset.webm || "",
       exif: fig.dataset.exif || ""

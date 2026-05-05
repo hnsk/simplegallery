@@ -38,6 +38,11 @@ def test_css_contains_expected_hooks() -> None:
     assert ".exif-panel" in css
     assert "@media (max-width: 768px)" in css
     assert "icons/play.svg" in css
+    assert ".breadcrumbs" in css
+    assert ".subgallery-grid" in css
+    assert ".subgallery-card" in css
+    assert ".subgallery-card--text" in css
+    assert ".lightbox-download" in css
 
 
 def test_js_contains_expected_hooks() -> None:
@@ -50,6 +55,8 @@ def test_js_contains_expected_hooks() -> None:
     assert "Escape" in js
     assert 'role", "dialog"' in js
     assert "aria-modal" in js
+    assert "lightbox-download" in js
+    assert "dataset.original" in js or "data-original" in js
 
 
 def test_play_svg_is_svg() -> None:
