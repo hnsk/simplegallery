@@ -137,3 +137,22 @@ Goal: single `/web` mount. Source lives at `/web/<gallery_subdir>/` (default `ga
 - [x] **CSS** — `.gallery-link` is a block link with no underline / inherited color; `figure` gets `scroll-margin-top: 1rem` so the anchored item isn't flush against the viewport top.
 - [x] **Tests** — `tests/test_renderer.py` adds `test_render_figure_has_anchor_id_and_link` (browser-friendly + transcoded image cases) and `test_render_video_figure_link_points_at_video_file`. Full suite: 113 pass, 1 skip in docker.
 - [x] **Smoke** — rebuilt `./web/` via shell+src mount; verified `id="m-..."`, `data-slug=`, `<a class="gallery-link" href="...">` in `web/photos/macro/index.html` plus regenerated hashed `gallery.<hash>.css/js`.
+
+## Step 14 — Pre-publish cleanup
+
+Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see commit log for cleanup so far.
+
+- [x] **Stale dirs wiped** — `output/`, `source/`, leftover `web/` cruft (`1920.webp*`, root-level `198088.webm`, orphan `web/{photos,videos}/video/*` from prior smoke runs) removed by user. `.gitignore` trimmed to drop legacy pre-Step-10 dirs (`source/`, `photos/`, `input/`, `output/`, `gallery_output/`); `web/` + `sample-data/` remain ignored.
+- [x] **README.md** — added; documents layout, Docker workflows (build / watch / serve / test), config matrix, GPS-on-direct-originals privacy caveat. Referenced from `pyproject.toml`.
+- [x] **LICENSE** — added MIT, matches `pyproject.toml license = { text = "MIT" }`.
+- [ ] **Builder dedup** — collapse `build_tree()` + `build_galleries()` into one internal flow (~80% overlap: scan → prune → copy_assets → image_pipeline → exif_batch → videos → render). `build_galleries(None)` and full build differ only by the `(in_scope, to_render)` partition. Drop `build_tree()` alias if `build_all` stays the public name; keep one.
+- [ ] **`__main__.py` scaffolding** — drop `try: from .builder import GalleryBuilder; except ImportError: log.error("not yet implemented (Step N)")` blocks in `_run_build` / `_run_watcher`. Top-level imports + direct calls.
+- [ ] **`cli.parse_args`** — single-line wrapper, single caller (`__main__.main`). Inline.
+- [ ] **`Renderer.copy_assets`** — unify `_HASHED_STATIC_FILES` / `_VERBATIM_STATIC_FILES` loops with one `(logical, hash: bool)` iteration.
+- [ ] **`pyproject.toml`** — add `classifiers`, `[project.urls]` (homepage / repo / issues), `keywords` so PyPI listing isn't sparse.
+- [ ] **CI** — `.github/workflows/test.yml` running `docker compose run --rm test` on push/PR.
+- [ ] **Dockerfile split** — optional builder + runtime stages so production image doesn't carry `[dev]` extras (pytest). Defer if image size not a concern.
+- [ ] **Dev log relocation** — move `TODO.md` + `NEXT.md` under `docs/` (or drop from sdist via `MANIFEST.in`); they're build-process artifacts, not user docs.
+- [ ] **`tests/test_smoke.py`** — strict subset of `tests/test_config.py`. Fold in or delete.
+- [ ] **`tests/test_config.py::test_apply_args_no_legacy_source_output`** — guards against pre-Step-10 flags. Drop once published.
+- [ ] **`SIMPLEGALLERY_DEBOUNCE`** — env-only, no CLI flag. Either add `--debounce` or drop the env var (only relevant in `--watch`).
