@@ -1,4 +1,4 @@
-"""Watcher: handler dirty-tracking, debounce coalescing, dir vs file events."""
+"""Watcher: dirty-rel tracking, debounce coalescing, nested events."""
 
 from __future__ import annotations
 
@@ -23,14 +23,14 @@ from simplegallery.watcher import GalleryEventHandler
 
 
 class _Recorder:
-    """Capture (names, index_dirty) flush invocations."""
+    """Capture dirty-rel flush invocations."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[set[str], bool]] = []
+        self.calls: list[set[str]] = []
         self.event = threading.Event()
 
-    def __call__(self, names: set[str], index_dirty: bool) -> None:
-        self.calls.append((set(names), index_dirty))
+    def __call__(self, dirty_rels: set[str]) -> None:
+        self.calls.append(set(dirty_rels))
         self.event.set()
 
     def wait(self, timeout: float = 1.0) -> bool:
@@ -51,38 +51,56 @@ def src(tmp_path: Path) -> Path:
     s = tmp_path / "source"
     (s / "alpha").mkdir(parents=True)
     (s / "beta").mkdir(parents=True)
+    (s / "alpha" / "macro").mkdir()
     return s
 
 
-def test_file_event_marks_gallery_dirty(src: Path) -> None:
+def test_file_event_marks_parent_dir_rel(src: Path) -> None:
     rec = _Recorder()
     h = _handler(src, debounce=0.05, recorder=rec)
     h.dispatch(FileModifiedEvent(str(src / "alpha" / "img.jpg")))
     assert rec.wait(1.0)
-    names, index_dirty = rec.calls[-1]
-    assert names == {"alpha"}
-    assert index_dirty is False
+    assert rec.calls[-1] == {"alpha"}
 
 
-def test_dir_create_marks_index_dirty(src: Path) -> None:
+def test_deeply_nested_file_event_marks_leaf_rel(src: Path) -> None:
     rec = _Recorder()
     h = _handler(src, debounce=0.05, recorder=rec)
-    new_dir = src / "gamma"
-    h.dispatch(DirCreatedEvent(str(new_dir)))
+    h.dispatch(FileCreatedEvent(str(src / "alpha" / "macro" / "close.png")))
     assert rec.wait(1.0)
-    names, index_dirty = rec.calls[-1]
-    assert names == {"gamma"}
-    assert index_dirty is True
+    assert rec.calls[-1] == {"alpha/macro"}
 
 
-def test_dir_delete_marks_index_dirty(src: Path) -> None:
+def test_file_at_source_root_marks_root_rel(src: Path) -> None:
+    rec = _Recorder()
+    h = _handler(src, debounce=0.05, recorder=rec)
+    h.dispatch(FileCreatedEvent(str(src / "loose.jpg")))
+    assert rec.wait(1.0)
+    assert rec.calls[-1] == {""}
+
+
+def test_dir_create_marks_dir_rel(src: Path) -> None:
+    rec = _Recorder()
+    h = _handler(src, debounce=0.05, recorder=rec)
+    h.dispatch(DirCreatedEvent(str(src / "gamma")))
+    assert rec.wait(1.0)
+    assert rec.calls[-1] == {"gamma"}
+
+
+def test_nested_dir_create_marks_full_rel(src: Path) -> None:
+    rec = _Recorder()
+    h = _handler(src, debounce=0.05, recorder=rec)
+    h.dispatch(DirCreatedEvent(str(src / "alpha" / "ultra")))
+    assert rec.wait(1.0)
+    assert rec.calls[-1] == {"alpha/ultra"}
+
+
+def test_dir_delete_marks_dir_rel(src: Path) -> None:
     rec = _Recorder()
     h = _handler(src, debounce=0.05, recorder=rec)
     h.dispatch(DirDeletedEvent(str(src / "alpha")))
     assert rec.wait(1.0)
-    names, index_dirty = rec.calls[-1]
-    assert names == {"alpha"}
-    assert index_dirty is True
+    assert rec.calls[-1] == {"alpha"}
 
 
 def test_dir_move_tracks_both_endpoints(src: Path) -> None:
@@ -90,9 +108,17 @@ def test_dir_move_tracks_both_endpoints(src: Path) -> None:
     h = _handler(src, debounce=0.05, recorder=rec)
     h.dispatch(DirMovedEvent(str(src / "alpha"), str(src / "alpha-renamed")))
     assert rec.wait(1.0)
-    names, index_dirty = rec.calls[-1]
-    assert names == {"alpha", "alpha-renamed"}
-    assert index_dirty is True
+    assert rec.calls[-1] == {"alpha", "alpha-renamed"}
+
+
+def test_nested_dir_move_tracks_both_endpoints(src: Path) -> None:
+    rec = _Recorder()
+    h = _handler(src, debounce=0.05, recorder=rec)
+    h.dispatch(
+        DirMovedEvent(str(src / "alpha" / "macro"), str(src / "beta" / "macro"))
+    )
+    assert rec.wait(1.0)
+    assert rec.calls[-1] == {"alpha/macro", "beta/macro"}
 
 
 def test_debounce_coalesces_burst(src: Path) -> None:
@@ -107,22 +133,7 @@ def test_debounce_coalesces_burst(src: Path) -> None:
     assert rec.wait(1.0)
     time.sleep(0.2)  # ensure no follow-up
     assert len(rec.calls) == 1
-    names, _ = rec.calls[0]
-    assert names == {"alpha", "beta"}
-
-
-def test_top_level_file_ignored(src: Path) -> None:
-    """File directly under source root (not inside a gallery) should not flush."""
-    rec = _Recorder()
-    h = _handler(src, debounce=0.05, recorder=rec)
-    h.dispatch(FileCreatedEvent(str(src / "loose.jpg")))
-    # one event still triggers because top-level dir name == "loose.jpg"; we accept
-    # this only if it is the *file* itself sitting in source root with len(parts)==1.
-    # Per implementation, len(parts)==1 + file is treated as a top-level "name" and
-    # marks it dirty without index change. Validate that index_dirty stays False.
-    if rec.wait(0.5):
-        names, index_dirty = rec.calls[-1]
-        assert index_dirty is False
+    assert rec.calls[0] == {"alpha", "beta"}
 
 
 def test_event_outside_source_ignored(src: Path, tmp_path: Path) -> None:
@@ -134,11 +145,13 @@ def test_event_outside_source_ignored(src: Path, tmp_path: Path) -> None:
     assert not rec.wait(0.25), "no flush expected for events outside source"
 
 
-def test_hidden_top_level_ignored(src: Path) -> None:
+def test_hidden_component_ignored(src: Path) -> None:
     rec = _Recorder()
     h = _handler(src, debounce=0.05, recorder=rec)
     hidden = src / ".cache"
     h.dispatch(FileCreatedEvent(str(hidden / "x.jpg")))
+    h.dispatch(FileModifiedEvent(str(src / "alpha" / ".tmpfile")))
+    h.dispatch(FileCreatedEvent(str(src / "alpha" / ".hidden" / "y.jpg")))
     assert not rec.wait(0.25)
 
 
@@ -157,12 +170,12 @@ def test_flush_now_drains_state(src: Path) -> None:
     h = _handler(src, debounce=5.0, recorder=rec)
     h.dispatch(FileModifiedEvent(str(src / "alpha" / "x.jpg")))
     h.flush_now()
-    assert rec.calls and rec.calls[-1][0] == {"alpha"}
-    assert h.pending == (set(), False)
+    assert rec.calls and rec.calls[-1] == {"alpha"}
+    assert h.pending == set()
 
 
 def test_watcher_service_partial_rebuild(monkeypatch, src: Path, tmp_path: Path) -> None:
-    """End-to-end: handler flush → builder.build_galleries called with dirty names."""
+    """End-to-end: handler flush → builder.build_galleries called with dirty rels."""
     from simplegallery.config import Config
     from simplegallery.watcher import WatcherService
 
@@ -171,23 +184,22 @@ def test_watcher_service_partial_rebuild(monkeypatch, src: Path, tmp_path: Path)
     class _FakeBuilder:
         def __init__(self) -> None:
             self.full_calls = 0
-            self.partial_calls: list[tuple[set[str], bool]] = []
+            self.partial_calls: list[set[str]] = []
 
         def build_all(self) -> list[Path]:
             self.full_calls += 1
             return []
 
-        def build_galleries(self, names, rebuild_index=True):
-            self.partial_calls.append((set(names), rebuild_index))
+        def build_galleries(self, dirty_rels):
+            self.partial_calls.append(set(dirty_rels))
             return []
 
     fake = _FakeBuilder()
     svc = WatcherService(cfg, builder=fake)
     # do not call start(); simulate a flush directly
     svc.handler.dispatch(FileModifiedEvent(str(src / "alpha" / "img.jpg")))
+    svc.handler.dispatch(DirCreatedEvent(str(src / "alpha" / "ultra")))
     svc.handler.dispatch(DirCreatedEvent(str(src / "gamma")))
     svc.handler.flush_now()
     assert fake.partial_calls, "expected partial rebuild"
-    names, rebuild_index = fake.partial_calls[-1]
-    assert names == {"alpha", "gamma"}
-    assert rebuild_index is True
+    assert fake.partial_calls[-1] == {"alpha", "alpha/ultra", "gamma"}

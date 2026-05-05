@@ -6,6 +6,7 @@ import logging
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Iterable
 
 from . import image_processor, video_processor
 from .cache import BuildCache
@@ -64,7 +65,8 @@ class GalleryBuilder:
         self.renderer.copy_assets()
 
         images = [m for g in galleries for m in g.images]
-        exif_by_path = self._process_images(images)
+        self._process_image_pipeline(images)
+        exif_by_path = self._extract_exif_batch(images)
 
         videos = [m for g in galleries for m in g.videos]
         self._process_videos(videos)
@@ -80,30 +82,86 @@ class GalleryBuilder:
 
     def build_galleries(
         self,
-        names: set[str] | None,
-        rebuild_index: bool = True,
+        dirty_rels: Iterable[str] | None = None,
     ) -> list[Path]:
-        """Watcher entrypoint — currently routes to a full ``build_tree()``.
+        """Partial rebuild scoped to dirty source-dir rel paths.
 
-        Per-dir dirty propagation under the recursive layout lands in substep
-        10.8; until then any change triggers a full rebuild. ``names`` and
-        ``rebuild_index`` are accepted for API stability but ignored.
+        ``dirty_rels`` are POSIX rel paths under ``config.source`` (empty
+        string ``""`` denotes the source root). For each dirty rel:
+          * media inside the rel (and any descendant) is reprocessed
+            (gated by ``cache.is_stale``);
+          * the rel itself plus every ancestor up to root is re-rendered,
+            because ancestor pages show subgallery cards whose own/sub
+            counts depend on their descendants.
+
+        Empty/None ``dirty_rels`` falls back to a full ``build_tree()``.
         """
-        del names, rebuild_index
-        return self.build_tree()
+        if dirty_rels is None:
+            return self.build_tree()
+        norm = _normalize_rels(dirty_rels)
+        if not norm:
+            return self.build_tree()
+
+        self.config.output.mkdir(parents=True, exist_ok=True)
+        self.cache.load()
+
+        root = self.scanner.scan_tree()
+        if root is None:
+            self.renderer.copy_assets()
+            self.cache.prune([])
+            self.cache.save()
+            return []
+
+        galleries = root.walk()
+        in_scope: list[Gallery] = []
+        to_render: list[Gallery] = []
+        for g in galleries:
+            rel = _gallery_rel(g)
+            if _is_dirty_or_descendant(rel, norm):
+                in_scope.append(g)
+                to_render.append(g)
+            elif _is_ancestor_of_dirty(rel, norm):
+                to_render.append(g)
+
+        removed = self.cache.prune([root])
+        for path in removed:
+            log.info("pruned: %s", path)
+
+        self.renderer.copy_assets()
+
+        process_imgs = [m for g in in_scope for m in g.images]
+        self._process_image_pipeline(process_imgs)
+
+        exif_imgs = [m for g in to_render for m in g.images]
+        exif_by_path = self._extract_exif_batch(exif_imgs)
+
+        videos = [m for g in in_scope for m in g.videos]
+        self._process_videos(videos)
+
+        rendered: list[Path] = []
+        for gallery in to_render:
+            exif_map = self._exif_for_gallery(gallery, exif_by_path)
+            rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
+
+        self.cache.save()
+        log.info(
+            "partial rebuild: %d dirty rel(s) → rendered %d page(s)",
+            len(norm),
+            len(rendered),
+        )
+        return rendered
 
     # --- image pipeline -------------------------------------------------
 
-    def _process_images(self, images: list[MediaFile]) -> dict[Path, dict]:
-        """Run thumbnail + full + EXIF for each image. Returns EXIF keyed by source path.
+    def _process_image_pipeline(self, images: list[MediaFile]) -> None:
+        """Run thumbnail + (optional) full re-encode for stale images.
 
-        Uses a process pool because ImageMagick / Wand is not thread-safe; concurrent
-        wand calls in the same process collide on the global pixel cache.
+        Uses a process pool because ImageMagick / Wand is not thread-safe;
+        concurrent wand calls in the same process collide on the global
+        pixel cache. Cache is updated for every successful image.
         """
-        exif: dict[Path, dict] = {}
         if not images:
-            return exif
-
+            return
         workers = max(1, int(self.config.workers))
         stale_specs: list[tuple[Path, Path, Path | None]] = []
         media_by_src: dict[Path, MediaFile] = {}
@@ -116,7 +174,8 @@ class GalleryBuilder:
                 stale_specs.append(
                     (media.source, media.output_thumb, media.output_full)
                 )
-
+        if not stale_specs:
+            return
         with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
             futures = {pool.submit(_image_worker, spec): spec for spec in stale_specs}
             for fut in as_completed(futures):
@@ -127,6 +186,12 @@ class GalleryBuilder:
                 except Exception as exc:
                     log.warning("image failed: %s (%s)", src, exc)
 
+    def _extract_exif_batch(self, images: list[MediaFile]) -> dict[Path, dict]:
+        """Read EXIF for every supplied image. Returns dict keyed by source path."""
+        exif: dict[Path, dict] = {}
+        if not images:
+            return exif
+        workers = max(1, int(self.config.workers))
         with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
             exif_futures = {pool.submit(_exif_worker, m.source): m for m in images}
             for fut in as_completed(exif_futures):
@@ -184,3 +249,40 @@ def _image_worker(spec: tuple[Path, Path, Path | None]) -> None:
 
 def _exif_worker(src: Path) -> dict:
     return image_processor.extract_exif(src)
+
+
+def _gallery_rel(g: Gallery) -> str:
+    """POSIX rel path string of gallery under source. ``""`` for the root."""
+    s = g.rel_path.as_posix()
+    return "" if s in ("", ".") else s
+
+
+def _normalize_rels(rels: Iterable[str]) -> set[str]:
+    """Strip leading/trailing slashes; ``"."``/``""`` collapse to ``""``."""
+    out: set[str] = set()
+    for r in rels:
+        s = r.strip("/")
+        out.add("" if s in ("", ".") else s)
+    return out
+
+
+def _is_dirty_or_descendant(rel: str, dirty: set[str]) -> bool:
+    """Is ``rel`` exactly a dirty rel, or nested inside one?"""
+    for d in dirty:
+        if d == "":
+            return True
+        if rel == d or rel.startswith(d + "/"):
+            return True
+    return False
+
+
+def _is_ancestor_of_dirty(rel: str, dirty: set[str]) -> bool:
+    """Is ``rel`` a strict ancestor of any dirty rel?"""
+    for d in dirty:
+        if d == "":
+            continue
+        if rel == "":
+            return True
+        if d.startswith(rel + "/"):
+            return True
+    return False

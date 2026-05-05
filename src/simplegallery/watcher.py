@@ -1,4 +1,10 @@
-"""Filesystem watcher: rebuild affected galleries on source changes."""
+"""Filesystem watcher: rebuild affected galleries on source changes.
+
+Dirty unit is the POSIX source-dir rel path under ``config.source`` of the
+changed file/dir. A file event marks the file's parent dir; a dir event marks
+the dir itself. ``""`` denotes the source root. Builder ancestor propagation
+is responsible for re-rendering parent pages — the handler only emits leaves.
+"""
 
 from __future__ import annotations
 
@@ -26,11 +32,11 @@ from .config import Config
 log = logging.getLogger(__name__)
 
 
-FlushCallback = Callable[[set[str], bool], None]
+FlushCallback = Callable[[set[str]], None]
 
 
 class GalleryEventHandler(FileSystemEventHandler):
-    """Translate watchdog events into a debounced (dirty-names, index-dirty) flush."""
+    """Translate watchdog events into a debounced dirty-rels flush."""
 
     def __init__(
         self,
@@ -46,8 +52,7 @@ class GalleryEventHandler(FileSystemEventHandler):
         self.debounce_seconds = max(0.0, float(debounce_seconds))
         self._on_flush = on_flush
         self._lock = threading.Lock()
-        self._dirty_names: set[str] = set()
-        self._index_dirty = False
+        self._dirty_rels: set[str] = set()
         self._timer: threading.Timer | None = None
 
     # --- watchdog hook --------------------------------------------------
@@ -55,40 +60,39 @@ class GalleryEventHandler(FileSystemEventHandler):
     def on_any_event(self, event: FileSystemEvent) -> None:
         if event.event_type in _IGNORED_EVENT_TYPES:
             return
-        names: set[str] = set()
-        index_change = False
+        is_dir = isinstance(event, (DirCreatedEvent, DirDeletedEvent, DirMovedEvent))
+        rels: set[str] = set()
 
-        top, is_top = self._top_level(getattr(event, "src_path", None))
-        if top is not None:
-            names.add(top)
-            if is_top and isinstance(
-                event, (DirCreatedEvent, DirDeletedEvent, DirMovedEvent)
-            ):
-                index_change = True
+        src_rel = self._rel_for_event(getattr(event, "src_path", None), is_dir_event=is_dir)
+        if src_rel is not None:
+            rels.add(src_rel)
 
-        dest = getattr(event, "dest_path", None)
-        if dest:
-            dtop, dis_top = self._top_level(dest)
-            if dtop is not None:
-                names.add(dtop)
-                if dis_top and isinstance(event, DirMovedEvent):
-                    index_change = True
+        dest_path = getattr(event, "dest_path", None)
+        if dest_path and isinstance(event, DirMovedEvent):
+            dest_rel = self._rel_for_event(dest_path, is_dir_event=True)
+            if dest_rel is not None:
+                rels.add(dest_rel)
 
-        if not names and not index_change:
+        if not rels:
             return
 
         with self._lock:
-            self._dirty_names.update(names)
-            if index_change:
-                self._index_dirty = True
+            self._dirty_rels.update(rels)
             self._reset_timer_locked()
 
     # --- internals ------------------------------------------------------
 
-    def _top_level(self, raw: str | None) -> tuple[str | None, bool]:
-        """Return (top-level subdir name under source, True if path == that subdir)."""
+    def _rel_for_event(self, raw: str | None, *, is_dir_event: bool) -> str | None:
+        """POSIX rel path of the source-dir whose page is affected.
+
+        For a file event: parent dir relative to ``source``.
+        For a dir event: the dir itself relative to ``source``.
+
+        Returns ``None`` for events outside ``source`` or under any hidden
+        component (path part starting with ``.``).
+        """
         if not raw:
-            return None, False
+            return None
         path = Path(raw)
         try:
             resolved = path.resolve()
@@ -97,14 +101,15 @@ class GalleryEventHandler(FileSystemEventHandler):
             try:
                 rel = path.relative_to(self.source)
             except ValueError:
-                return None, False
+                return None
         parts = rel.parts
         if not parts:
-            return None, False
-        top = parts[0]
-        if top.startswith(".") or top in ("", "."):
-            return None, False
-        return top, len(parts) == 1
+            # Event on source root itself — treat as root dir change.
+            return "" if is_dir_event else None
+        if any(p.startswith(".") for p in parts):
+            return None
+        dir_parts = parts if is_dir_event else parts[:-1]
+        return "/".join(dir_parts)
 
     def _reset_timer_locked(self) -> None:
         if self._timer is not None:
@@ -120,15 +125,13 @@ class GalleryEventHandler(FileSystemEventHandler):
 
     def _fire(self) -> None:
         with self._lock:
-            names = self._dirty_names
-            index_dirty = self._index_dirty
-            self._dirty_names = set()
-            self._index_dirty = False
+            rels = self._dirty_rels
+            self._dirty_rels = set()
             self._timer = None
-        if not names and not index_dirty:
+        if not rels:
             return
         try:
-            self._on_flush(names, index_dirty)
+            self._on_flush(rels)
         except Exception:
             log.exception("rebuild callback failed")
 
@@ -143,9 +146,9 @@ class GalleryEventHandler(FileSystemEventHandler):
         self._fire()
 
     @property
-    def pending(self) -> tuple[set[str], bool]:
+    def pending(self) -> set[str]:
         with self._lock:
-            return set(self._dirty_names), self._index_dirty
+            return set(self._dirty_rels)
 
 
 class WatcherService:
@@ -172,7 +175,11 @@ class WatcherService:
         observer.schedule(self.handler, str(self.config.source), recursive=True)
         observer.start()
         self._observer = observer
-        log.info("watching %s (debounce=%.2fs)", self.config.source, self.config.debounce_seconds)
+        log.info(
+            "watching %s (debounce=%.2fs)",
+            self.config.source,
+            self.config.debounce_seconds,
+        )
         try:
             observer.join()
         except KeyboardInterrupt:
@@ -184,10 +191,6 @@ class WatcherService:
             self._observer.join()
             self._observer = None
 
-    def _rebuild(self, dirty_names: set[str], index_dirty: bool) -> None:
-        log.info(
-            "rebuild triggered: galleries=%s index_dirty=%s",
-            sorted(dirty_names) or "[]",
-            index_dirty,
-        )
-        self.builder.build_galleries(dirty_names if dirty_names else set(), rebuild_index=True)
+    def _rebuild(self, dirty_rels: set[str]) -> None:
+        log.info("rebuild triggered: dirty=%s", sorted(dirty_rels) or "[]")
+        self.builder.build_galleries(dirty_rels)
