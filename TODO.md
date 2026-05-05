@@ -39,8 +39,8 @@
 - [x] `tests/test_image_processor.py` — thumb dims/format, full dims/format, EXIF dict shape, GPS stripped, HEIC thumb + full
 
 ## Step 5 — Frontend
-- [ ] `static/gallery.css` — CSS Grid `auto-fill minmax(200px,1fr)`, lightbox overlay `position:fixed`, `@media (max-width:768px)`
-- [ ] `static/gallery.js` — IIFE; `GalleryGrid`, `Lightbox`, `ExifPanel` classes
+- [x] `static/gallery.css` — CSS Grid `auto-fill minmax(200px,1fr)`, lightbox overlay `position:fixed`, `@media (max-width:768px)`, EXIF side rail desktop / slide-up sheet mobile, play badge for video thumbs
+- [x] `static/gallery.js` — IIFE; `GalleryGrid`, `Lightbox`, `ExifPanel` classes
   - Lightbox DOM injection, open/close/nav
   - `data-src` (image) or `data-mp4`/`data-webm` (video) loading
   - Preload ±1 neighbors
@@ -48,8 +48,9 @@
   - Touch swipe: `|Δx|>50px` and `|Δx|>|Δy|`
   - Focus trap (save/restore `activeElement`)
   - ExifPanel: parse `data-exif` JSON → `<dt>/<dd>`, toggle via `(i)` button; mobile slide-up
-- [ ] `static/icons/play.svg` — play button overlay for video thumbs
-- [ ] Accessibility — `alt` on thumb `<img>` from filename; `aria-label` on lightbox prev/next/close; `(i)` is real `<button>`; lightbox `role="dialog"` + `aria-modal="true"`
+- [x] `static/icons/play.svg` — play button overlay for video thumbs (verbatim copy at `assets/icons/play.svg`, referenced by CSS `background-image`)
+- [x] Accessibility — `alt` on thumb `<img>` from filename; `aria-label` on lightbox prev/next/close/info; `(i)` is real `<button>`; lightbox `role="dialog"` + `aria-modal="true"`
+- [x] `tests/test_frontend_assets.py` — packaged asset payload + `copy_assets` emits CSS/JS/icons
 
 ## Step 6 — Video processor
 - [ ] `src/simplegallery/video_processor.py`

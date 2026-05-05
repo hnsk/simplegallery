@@ -1,38 +1,23 @@
 # NEXT
 
-Step 5 — Frontend (CSS + JS replaces stubs).
+Step 5 done. Next: Step 6 (video processor) or Step 8 (watcher).
 
 Status:
 - Step 0 done.
 - Step 1 done.
 - Step 2 done.
 - Step 3 done.
-- Step 4 done. `image_processor.py` (Wand: auto-orient, 400×300 crop-fill WebP@80, JPEG@92 with GPS stripped; EXIF read via Wand → `exifread` fallback, humanized to Camera/Lens/Date/Exposure/Aperture/ISO/FocalLength). Builder wires `ThreadPoolExecutor(workers)`, per-image `cache.is_stale()` skip, per-image try/except, populates `data-exif` JSON via `Renderer.render_gallery(gallery, exif=...)`. Tests pull from gitignored `sample-data/` (mounted at `/sample-data` ro in `test`/`shell` services); skip when fixtures absent. 47 passed, 1 skipped (`docker compose run --rm test`).
+- Step 4 done.
+- Step 5 done. `static/gallery.css` (grid, lightbox overlay, EXIF panel side-rail/slide-up mobile, play badge via `background-image: url(icons/play.svg)`); `static/gallery.js` (IIFE — `GalleryGrid` per `.gallery-grid[data-gallery]`, `Lightbox` injects `role="dialog"` + `aria-modal="true"` shell, ±1 image preload, keyboard arrows + Escape, touch swipe `|Δx|>50 && |Δx|>|Δy|`, focus trap, save/restore `activeElement`, image vs `<video>` source switch, `(i)` toggles `ExifPanel`); `static/icons/play.svg` copied verbatim at `assets/icons/play.svg` so hashed CSS can `url(icons/play.svg)`. Renderer split `_HASHED_STATIC_FILES` (css/js, sha256-hashed) vs `_VERBATIM_STATIC_FILES` (icons). 11 Step-5/Renderer tests pass (`docker compose run --rm test -v tests/test_frontend_assets.py tests/test_renderer.py`).
 - Step 7 done early.
 
-Create / replace:
-- `src/simplegallery/static/gallery.css`
-  - CSS Grid `auto-fill minmax(200px,1fr)`
-  - Lightbox overlay `position:fixed`, dark backdrop, centered media
-  - EXIF panel: side rail desktop, slide-up sheet on `@media (max-width:768px)`
-  - Play badge for video thumbs
-- `src/simplegallery/static/gallery.js` (IIFE, no deps)
-  - `GalleryGrid` — click figure → open Lightbox
-  - `Lightbox` — DOM injection, open/close/nav, focus trap (save/restore `activeElement`), `role="dialog"`, `aria-modal="true"`, prev/next/close buttons with `aria-label`, keyboard arrows + Escape, touch swipe `|Δx|>50 && |Δx|>|Δy|`, ±1 neighbor preload
-  - Image branch loads `data-src`; video branch builds `<video>` with `data-mp4` + `data-webm` sources, poster=`data-thumb`
-  - `ExifPanel` — `(i)` `<button>`; parse `data-exif` JSON → `<dl>/<dt>/<dd>` rows
-- `src/simplegallery/static/icons/play.svg` — play badge for video thumbs
-- Renderer: alt text on thumb img already from filename. Lightbox markup is JS-injected — no template change.
+Known issue (pre-existing, NOT Step 5):
+- `tests/test_image_processor.py::test_heic_thumbnail_decodes` and `test_heic_full_converts_to_jpeg` fail with `wand.exceptions.ResourceLimitError: time limit exceeded` on `/sample-data/shelf-christmas-decoration.heic`. ImageMagick `time` policy already `unlimited` in `docker/imagemagick-policy.xml`. Likely pixel-cache time limit or libheif/threading regression. Investigate in Step 6 or earlier — not introduced by Step 5 frontend work.
 
-Tests:
-- `tests/test_frontend_assets.py`
-  - asset files present in package
-  - `gallery.css` / `gallery.js` non-empty, contain expected hooks (`.gallery-grid`, `Lightbox`, `data-exif`)
-  - copy_assets emits all (incl. `icons/play.svg`)
+Next steps options:
+- Step 6 (video processor) — `src/simplegallery/video_processor.py`: `probe()`, `generate_thumbnail()`, `transcode_mp4()`, `transcode_webm()`; wire into builder; `tests/test_video_processor.py` (mark transcode `@pytest.mark.slow`); short fixture mp4.
+- Step 8 (watcher) — `src/simplegallery/watcher.py`: watchdog `FileSystemEventHandler`, debounced rebuild, dirty-slug set; wire `--watch`; `tests/test_watcher.py`.
 
-How to run during Step 5:
-- Tests: `docker compose run --rm test`
-- Smoke: `docker compose run --rm app` after dropping sample images into `./source/<gallery>/`, then open `output/index.html` in a browser
-- Mobile check: Chrome DevTools device emulation
-
-After Step 5: update TODO.md + NEXT.md, commit, then Step 6 (video processor) or Step 8 (watcher).
+How to verify Step 5 in browser:
+- Drop sample images into `./source/<gallery>/`, then `docker compose run --rm app`.
+- Open `output/index.html` in a browser. Check grid, click → lightbox, arrows/Escape, swipe, EXIF toggle, mobile viewport (Chrome DevTools).

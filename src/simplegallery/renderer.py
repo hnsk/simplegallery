@@ -23,7 +23,8 @@ ASSETS_DIRNAME = "assets"
 HASH_LENGTH = 10
 INDEX_FILENAME = "index.html"
 
-_STATIC_FILES = ("gallery.css", "gallery.js")
+_HASHED_STATIC_FILES = ("gallery.css", "gallery.js")
+_VERBATIM_STATIC_FILES = ("icons/play.svg",)
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class Renderer:
 
         result: dict[str, Asset] = {}
         static_root = resources.files("simplegallery").joinpath("static")
-        for logical in _STATIC_FILES:
+        for logical in _HASHED_STATIC_FILES:
             src = static_root.joinpath(logical)
             data = src.read_bytes()
             digest = hashlib.sha256(data).hexdigest()[:HASH_LENGTH]
@@ -70,6 +71,16 @@ class Renderer:
             result[logical] = Asset(
                 logical=logical,
                 rel_output=f"{ASSETS_DIRNAME}/{hashed_name}",
+            )
+        for logical in _VERBATIM_STATIC_FILES:
+            src = static_root.joinpath(logical)
+            data = src.read_bytes()
+            target = assets_dir / logical
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            result[logical] = Asset(
+                logical=logical,
+                rel_output=f"{ASSETS_DIRNAME}/{logical}",
             )
         self._assets = result
         return result
@@ -122,7 +133,8 @@ class Renderer:
         if not self._assets:
             raise RuntimeError("copy_assets() must be called before rendering")
         out: dict[str, str] = {}
-        for logical, asset in self._assets.items():
+        for logical in _HASHED_STATIC_FILES:
+            asset = self._assets[logical]
             absolute = self.config.output / asset.rel_output
             short = logical.rsplit(".", 1)[-1]
             out[short] = self._rel(absolute, page_dir)

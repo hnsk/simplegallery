@@ -1,8 +1,283 @@
-// simplegallery — stub script (full GalleryGrid/Lightbox/ExifPanel lands in Step 5).
+// simplegallery — GalleryGrid, Lightbox, ExifPanel (no deps).
 (function () {
   "use strict";
   if (typeof document === "undefined") return;
-  document.addEventListener("DOMContentLoaded", function () {
+
+  var SWIPE_MIN = 50;
+
+  function ready(fn) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", fn, { once: true });
+    } else {
+      fn();
+    }
+  }
+
+  // --- ExifPanel ----------------------------------------------------------
+
+  function ExifPanel(root) {
+    this.root = root;
+    this.list = root.querySelector(".exif-list");
+    this.empty = root.querySelector(".exif-empty");
+  }
+
+  ExifPanel.prototype.render = function (raw) {
+    this.list.innerHTML = "";
+    var data = parseExif(raw);
+    var keys = data ? Object.keys(data) : [];
+    if (!keys.length) {
+      this.empty.hidden = false;
+      return;
+    }
+    this.empty.hidden = true;
+    var frag = document.createDocumentFragment();
+    keys.forEach(function (key) {
+      var dt = document.createElement("dt");
+      dt.textContent = key;
+      var dd = document.createElement("dd");
+      dd.textContent = String(data[key]);
+      frag.appendChild(dt);
+      frag.appendChild(dd);
+    });
+    this.list.appendChild(frag);
+  };
+
+  ExifPanel.prototype.open = function () { this.root.dataset.open = "true"; };
+  ExifPanel.prototype.close = function () { this.root.dataset.open = "false"; };
+  ExifPanel.prototype.toggle = function () {
+    if (this.root.dataset.open === "true") this.close();
+    else this.open();
+  };
+
+  function parseExif(raw) {
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
+
+  // --- Lightbox -----------------------------------------------------------
+
+  function Lightbox(items) {
+    this.items = items;
+    this.index = 0;
+    this.previousFocus = null;
+    this.touchStart = null;
+    this.root = null;
+    this.image = null;
+    this.video = null;
+    this.exif = null;
+    this._build();
+  }
+
+  Lightbox.prototype._build = function () {
+    var root = document.createElement("div");
+    root.className = "lightbox";
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-label", "Media viewer");
+    root.hidden = true;
+    root.innerHTML =
+      '<div class="lightbox-stage">' +
+        '<button type="button" class="lightbox-btn lightbox-close" aria-label="Close">×</button>' +
+        '<button type="button" class="lightbox-btn lightbox-info" aria-label="Toggle EXIF">i</button>' +
+        '<button type="button" class="lightbox-btn lightbox-prev" aria-label="Previous">‹</button>' +
+        '<button type="button" class="lightbox-btn lightbox-next" aria-label="Next">›</button>' +
+        '<img class="lightbox-media lightbox-image" alt="" hidden>' +
+        '<video class="lightbox-media lightbox-video" controls playsinline hidden></video>' +
+        '<aside class="exif-panel" data-open="false">' +
+          '<h2>EXIF</h2>' +
+          '<dl class="exif-list"></dl>' +
+          '<p class="exif-empty" hidden>No EXIF data.</p>' +
+        '</aside>' +
+      '</div>';
+    document.body.appendChild(root);
+
+    this.root = root;
+    this.image = root.querySelector(".lightbox-image");
+    this.video = root.querySelector(".lightbox-video");
+    this.exif = new ExifPanel(root.querySelector(".exif-panel"));
+
+    var self = this;
+    root.querySelector(".lightbox-close").addEventListener("click", function () { self.close(); });
+    root.querySelector(".lightbox-prev").addEventListener("click", function () { self.prev(); });
+    root.querySelector(".lightbox-next").addEventListener("click", function () { self.next(); });
+    root.querySelector(".lightbox-info").addEventListener("click", function () { self.exif.toggle(); });
+
+    root.addEventListener("click", function (ev) {
+      if (ev.target === root || ev.target.classList.contains("lightbox-stage")) self.close();
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (root.hidden) return;
+      if (ev.key === "Escape") { ev.preventDefault(); self.close(); }
+      else if (ev.key === "ArrowLeft") { ev.preventDefault(); self.prev(); }
+      else if (ev.key === "ArrowRight") { ev.preventDefault(); self.next(); }
+      else if (ev.key === "Tab") self._trapFocus(ev);
+    });
+
+    root.addEventListener("touchstart", function (ev) {
+      if (ev.touches.length !== 1) { self.touchStart = null; return; }
+      self.touchStart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+    }, { passive: true });
+
+    root.addEventListener("touchend", function (ev) {
+      var start = self.touchStart;
+      self.touchStart = null;
+      if (!start || !ev.changedTouches.length) return;
+      var dx = ev.changedTouches[0].clientX - start.x;
+      var dy = ev.changedTouches[0].clientY - start.y;
+      if (Math.abs(dx) > SWIPE_MIN && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) self.next(); else self.prev();
+      }
+    });
+  };
+
+  Lightbox.prototype.open = function (index) {
+    this.previousFocus = document.activeElement;
+    this.index = clamp(index, 0, this.items.length - 1);
+    this.root.hidden = false;
+    document.body.style.overflow = "hidden";
+    this._show(this.index);
+    this._preloadNeighbors();
+    var closeBtn = this.root.querySelector(".lightbox-close");
+    if (closeBtn) closeBtn.focus();
+  };
+
+  Lightbox.prototype.close = function () {
+    this.root.hidden = true;
+    document.body.style.overflow = "";
+    this._stopVideo();
+    this.exif.close();
+    if (this.previousFocus && this.previousFocus.focus) {
+      try { this.previousFocus.focus(); } catch (e) { /* ignore */ }
+    }
+    this.previousFocus = null;
+  };
+
+  Lightbox.prototype.prev = function () {
+    if (!this.items.length) return;
+    this.index = (this.index - 1 + this.items.length) % this.items.length;
+    this._show(this.index);
+    this._preloadNeighbors();
+  };
+
+  Lightbox.prototype.next = function () {
+    if (!this.items.length) return;
+    this.index = (this.index + 1) % this.items.length;
+    this._show(this.index);
+    this._preloadNeighbors();
+  };
+
+  Lightbox.prototype._show = function (index) {
+    var item = this.items[index];
+    if (!item) return;
+    this._stopVideo();
+    if (item.kind === "video") {
+      this.image.hidden = true;
+      this.image.removeAttribute("src");
+      this.video.hidden = false;
+      this.video.poster = item.thumb || "";
+      this.video.innerHTML = "";
+      if (item.mp4) appendSource(this.video, item.mp4, "video/mp4");
+      if (item.webm) appendSource(this.video, item.webm, "video/webm");
+      this.video.load();
+    } else {
+      this.video.hidden = true;
+      this.image.hidden = false;
+      this.image.src = item.src || item.thumb || "";
+      this.image.alt = item.name || "";
+    }
+    this.exif.render(item.exif);
+  };
+
+  Lightbox.prototype._preloadNeighbors = function () {
+    var n = this.items.length;
+    if (n < 2) return;
+    var offsets = [-1, 1];
+    for (var i = 0; i < offsets.length; i++) {
+      var item = this.items[(this.index + offsets[i] + n) % n];
+      if (item && item.kind !== "video" && item.src) {
+        var img = new Image();
+        img.src = item.src;
+      }
+    }
+  };
+
+  Lightbox.prototype._stopVideo = function () {
+    try {
+      this.video.pause();
+      this.video.removeAttribute("src");
+      this.video.innerHTML = "";
+      this.video.load();
+    } catch (e) { /* ignore */ }
+  };
+
+  Lightbox.prototype._trapFocus = function (ev) {
+    var focusables = this.root.querySelectorAll(
+      'button, [href], input, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusables.length) return;
+    var first = focusables[0];
+    var last = focusables[focusables.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      first.focus();
+    }
+  };
+
+  function appendSource(video, src, type) {
+    var s = document.createElement("source");
+    s.src = src;
+    s.type = type;
+    video.appendChild(s);
+  }
+
+  function clamp(n, lo, hi) {
+    if (n < lo) return lo;
+    if (n > hi) return hi;
+    return n;
+  }
+
+  // --- GalleryGrid --------------------------------------------------------
+
+  function GalleryGrid(root) {
+    this.root = root;
+    this.figures = Array.prototype.slice.call(root.querySelectorAll("figure"));
+    this.items = this.figures.map(figureToItem);
+    this.lightbox = new Lightbox(this.items);
+    var self = this;
+    this.figures.forEach(function (fig, i) {
+      fig.setAttribute("tabindex", "0");
+      fig.setAttribute("role", "button");
+      fig.addEventListener("click", function () { self.lightbox.open(i); });
+      fig.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          self.lightbox.open(i);
+        }
+      });
+    });
+  }
+
+  function figureToItem(fig) {
+    return {
+      kind: fig.dataset.kind || "image",
+      name: (fig.querySelector("img") && fig.querySelector("img").alt) || "",
+      thumb: fig.dataset.thumb || (fig.querySelector("img") && fig.querySelector("img").src) || "",
+      src: fig.dataset.src || "",
+      mp4: fig.dataset.mp4 || "",
+      webm: fig.dataset.webm || "",
+      exif: fig.dataset.exif || ""
+    };
+  }
+
+  // --- bootstrap ----------------------------------------------------------
+
+  ready(function () {
     document.documentElement.dataset.simplegallery = "ready";
+    var grids = document.querySelectorAll(".gallery-grid[data-gallery]");
+    Array.prototype.forEach.call(grids, function (g) { new GalleryGrid(g); });
   });
 })();
