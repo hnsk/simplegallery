@@ -1,23 +1,41 @@
 # NEXT
 
-Step 9 mostly done — automated verification passes. Browser/mobile manual checks still pending.
+Step 10 begins — restructure to `/web` web-root layout with originals served directly + recursive galleries.
 
-Status:
-- Steps 0–8 done.
-- Step 9: per-file error handling, test suite, smoke test, watcher live test all green. Two real fixes landed this step:
-  - `builder.py`: image pool switched from `ThreadPoolExecutor` → `ProcessPoolExecutor(mp_context=spawn)`. wand/ImageMagick is not thread-safe; concurrent thread access caused intermittent `time limit exceeded @ cache.c/GetImagePixelCache/1743` (misleading error from IM throttle path). New module-level `_image_worker` and `_exif_worker` are picklable.
-  - `watcher.py`: filter `FileOpenedEvent` + `FileClosedNoWriteEvent` (`EVENT_TYPE_OPENED`, `EVENT_TYPE_CLOSED_NO_WRITE`). Without this, the build's own reads of `/source` triggered watchdog → infinite rebuild loop. Added `tests/test_watcher.py::test_read_only_open_close_events_ignored`.
-- Test suite: 71 pass, 1 skip, 1 pre-existing flaky failure on `tests/test_image_processor.py::test_heic_thumbnail_decodes` against `/sample-data/shelf-christmas-decoration.heic`. Same error reproduces with `magick identify -verbose` against that file standalone — looks like libheif/IM 7.1.2-19 + that specific file. Other HEIC handling fine. Pre-existing per Step 8 NEXT.
-- Smoke build (`/source/photos`, `/source/videos`): index + 2 gallery pages, 4/6 photo thumbs+full, 1 image in videos dir, 2 videos thumb+mp4+webm. `uC38zxx.jpeg` is a corrupt JPEG ("Application transferred too few scanlines") — per-file error handling skips it cleanly.
-- Watcher live: tested file create, new subdir create, rename, delete. All trigger correct partial rebuild + cache prune.
+Goal recap:
+- Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
+- We own `/web/` root. User content outside `<gallery_subdir>/` = user error (skipped/ignored).
+- Browser-friendly formats (jpg/jpeg/png/webp/gif/avif) → reference original directly as `data-src`; no full-size duplicate.
+- HEIC/HEIF/TIFF → generate JPEG derivative for inline view, keep original downloadable via lightbox download button.
+- Galleries nest arbitrarily. Each dir = its own page. Page layout: breadcrumbs → subgallery cards (own count + non-recursive subcount) → media grid. Empty galleries (no own media + no non-empty subs) skipped. Galleries with subs but no own media render text-only (no cover thumb).
+- Reserved names at source root: `<gallery_subdir>`, `assets`, `index.html` — skip + warn on collision.
 
-Remaining for Step 9:
-- Open `output/index.html` in a real browser; click into a gallery; verify lightbox arrows + Escape + (i) EXIF panel + video poster + HTML5 player.
-- Chrome DevTools mobile viewport: swipe works, EXIF slides up from bottom.
-- Decide on HEIC sample: substitute another file or document as sample-data quirk.
+Decisions locked in this conversation:
+1. Cover for gallery with no own images: text only (no recursive cover).
+2. Breadcrumbs: yes, on every gallery page.
+3. Empty galleries: skip.
+4. Subgallery card shows own media count + non-recursive subgallery count.
+5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-How to reproduce locally:
+First substep: **Config + Scanner refactor** (recursive `Gallery` model with `rel_path`, `breadcrumbs`, `subgalleries`; reserved-name handling; `web_root`/`gallery_subdir`).
+
+Order of attack:
+1. Config (env + dataclass).
+2. Scanner (recursive, new `Gallery` shape, reserved names, transcode_needed flag on `MediaFile`).
+3. Cache (verify path-keyed still works; prune across nested output).
+4. Image processor (skip `generate_full` when not transcode_needed).
+5. Builder (DFS walk).
+6. Renderer + templates (breadcrumbs, subgallery cards, original href, download button; drop separate index template).
+7. Frontend (download button + subgallery + breadcrumb styling).
+8. Watcher (per-dir dirty propagation under new layout).
+9. CLI/`__main__` (`--web`, `--gallery-subdir`).
+10. docker-compose.yml.
+11. Tests rewritten.
+12. Smoke build over nested sample tree.
+
+Per substep: update TODO.md + NEXT.md + commit.
+
+How to reproduce so far:
 - Build: `docker compose build app`
 - Tests: `docker compose run --rm test`
-- Smoke: `docker compose run --rm app -v` (source pre-populated under `./source/`)
-- Watch: `docker compose run --rm -d -e SIMPLEGALLERY_WATCH=1 -e SIMPLEGALLERY_DEBOUNCE=1.0 --name sg_watch app -v`; tail with `docker logs -f sg_watch`; modify `./source/<gallery>/`; stop with `docker stop sg_watch`.
+- Smoke (current pre-Step-10 layout): `docker compose run --rm app -v` (will be replaced with `/web` layout in Step 10).

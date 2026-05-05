@@ -89,3 +89,24 @@
 - [ ] Manual lightbox verify in browser (arrows, EXIF, video poster)
 - [ ] Mobile viewport (Chrome DevTools) — swipe + EXIF slide-up
 - [ ] Resolve HEIC time-limit on `shelf-christmas-decoration.heic` (substitute another HEIC sample, or accept as known sample-data quirk)
+
+## Step 10 — Web-root layout + recursive galleries + originals-as-full
+
+Goal: single `/web` mount. Source lives at `/web/<gallery_subdir>/` (default `gallery`). Output assets/HTML/derivatives live at `/web/`. Originals served directly as full-size for browser-friendly formats (no JPEG re-encode). HEIC/HEIF/TIFF get a JPEG derivative + original kept downloadable. Galleries nest arbitrarily; every gallery dir gets its own page (subgallery cards first, then media). We own `/web/` root; anything user puts there outside `<gallery_subdir>/` = user error.
+
+- [ ] **Config** — replace `source`/`output` with `web_root` + `gallery_subdir` (env: `SIMPLEGALLERY_WEB`, `SIMPLEGALLERY_GALLERY_SUBDIR`, default `gallery`). Derive `source = web_root / gallery_subdir`. Reserved-at-root names: `<gallery_subdir>`, `assets`, `index.html`.
+- [ ] **Scanner** — recursive walk under source root. New `Gallery` model with `subgalleries: list[Gallery]`, `images`, `videos`, `rel_path: PurePosixPath` (relative to source root, `""` for root), `breadcrumbs: list[(name, href)]`. Top-level reserved-name collisions skipped + warned. Empty galleries (no own media + no non-empty subs) skipped.
+- [ ] **MediaFile** — add `transcode_needed: bool` (true iff ext in `{.heic,.heif,.tif,.tiff}`); `output_full` set only when `transcode_needed`; original-relative-to-web-root path used as `data-src` + download link otherwise. Output dirs mirror source: `web/<rel>/thumbs/<slug>.webp`, `web/<rel>/full/<slug>.jpg` (only HEIC/TIFF), `web/<rel>/video/<slug>.{mp4,webm}`.
+- [ ] **Image processor** — `generate_full` only invoked when `transcode_needed`. EXIF strip stays for HEIC/TIFF derivative; original untouched (document GPS-stays for direct-served formats).
+- [ ] **Cache** — `is_stale` + `mark_done` keyed by source path (already path-based, but verify after recursive change). `prune` walks recursive output tree; preserves `<gallery_subdir>/`, `assets/`, top-level `index.html`. Orphan dirs/files outside that set get removed only if cache says they were ours.
+- [ ] **Renderer** — single `gallery.html.j2` (root gallery uses same template; no separate `index.html.j2`). Breadcrumbs partial. Subgallery card grid (cover thumb if any own image else text-only; show `count` own + `subcount` non-recursive). Media grid below. Lightbox `data-src` → derivative-or-original; `data-original` always points to original for download button. `assets/` + originals referenced via relative paths from each page.
+- [ ] **Templates** — `gallery.html.j2` rewritten; new `_breadcrumbs.html.j2` partial; `_subgallery_card.html.j2` + `_media_item.html.j2` partials if cleaner. Drop `index.html.j2`.
+- [ ] **Frontend (CSS/JS)** — lightbox download button (anchor with `download` attr → `data-original`); subgallery card styling; breadcrumb styling. Update `data-exif` shape unchanged.
+- [ ] **Builder** — walk gallery tree (DFS). Process all media in tree (own pool batches). Render every gallery page. Skip empties.
+- [ ] **Watcher** — dirty unit = source dir of changed file. Dir create/delete/move marks parent + new dir. Output writes still confined to `web/<rel>/{thumbs,full,video}/` so existing `FileOpenedEvent`/`FileClosedNoWriteEvent` filter remains; verify no loop with new layout.
+- [ ] **CLI / `__main__`** — `--web` (replaces `--source`/`--output`), `--gallery-subdir`. Update help text.
+- [ ] **docker-compose.yml** — single `${SIMPLEGALLERY_WEB_DIR:-./web}:/web` mount (rw). Drop `/source` + `/output`. Update `app` env: `SIMPLEGALLERY_WEB=/web`, `SIMPLEGALLERY_GALLERY_SUBDIR=gallery`. Test/shell services unchanged except sample-data path semantics.
+- [ ] **Sample tree** — under `./web/gallery/` create nested example: `./web/gallery/photos/...`, `./web/gallery/photos/macro/...`, `./web/gallery/videos/...`, plus a root-level `./web/gallery/cover.jpg` to exercise media-at-root.
+- [ ] **Tests** — rewrite scanner tests for recursive model + reserved-name collisions; cache prune across nested output; renderer tests for breadcrumbs + subgallery cards + original-href + transcode-only-when-needed; image processor unchanged but builder tests reflect new dir layout; watcher tests for nested dirty propagation; frontend asset test still valid.
+- [ ] **Smoke** — `docker compose run --rm app -v` over nested sample. Verify originals served, HEIC derivative rendered, download button hits original, breadcrumbs correct at every depth, no output written into source dir.
+- [ ] **TODO.md + NEXT.md** updated after each substep; git commit per substep.
