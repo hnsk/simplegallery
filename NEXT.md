@@ -14,6 +14,7 @@ Completed substeps:
 8. **Watcher** — done. `GalleryEventHandler` now tracks a `dirty_rels: set[str]` of POSIX source-dir rel paths under `config.source` (`""` denotes the root). File events mark the parent dir; dir create/delete mark the dir itself; dir moves mark both endpoints. Hidden components anywhere in the path are filtered. `FlushCallback` simplified to `Callable[[set[str]], None]`; `index_dirty` removed (every dir is its own page now, and ancestor re-render is handled by the builder). `WatcherService._rebuild` calls `builder.build_galleries(dirty_rels)`. Builder gains a real partial path: `_process_images` split into `_process_image_pipeline` (thumb+full, gated by `cache.is_stale`) and `_extract_exif_batch` (EXIF for any rendered image). `build_galleries(dirty_rels)` scans the full tree, scopes media processing to dirty rels and their descendants, and re-renders dirty + every ancestor (so subgallery cards stay in sync). Tests rewritten in `tests/test_watcher.py` (15 cases). Suite: 116 pass, 1 skip, 2 known sample-data HEIC flakes.
 9. **CLI / `__main__`** — done. Legacy `--source` / `--output` argparse flags + their `apply_args` branches removed; help text on `--web` now describes the single-mount layout. `__main__.py` wiring unchanged (already routes through `Config.from_env()` + `apply_args`). `tests/test_smoke.py::test_cli_overrides_config` rewritten around `--web` / `--gallery-subdir`. `tests/test_config.py::test_apply_args_no_legacy_source_output` asserts the legacy flags now raise `SystemExit`. Suite: 116 pass, 1 skip, 2 pre-existing HEIC sample-data flakes.
 10. **docker-compose.yml** — done. `app` service collapsed to a single `${SIMPLEGALLERY_WEB_DIR:-./web}:/web` rw bind. Dropped `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars (no longer read by `Config.from_env`); replaced with `SIMPLEGALLERY_WEB=/web` + `SIMPLEGALLERY_GALLERY_SUBDIR=${SIMPLEGALLERY_GALLERY_SUBDIR:-gallery}`. `test` / `shell` services untouched. `docker compose config` parses; `docker compose run --rm test` still 116 pass + sample-data HEIC flakes only.
+11. **Sample tree** — done. `./web/gallery/cover.jpg` (root-level media, copy of EXIF-bearing `23xxesym0e9w18z2904frnpgy7.jpg`), `./web/gallery/photos/{129679.jpg,214143.jpeg,214361.jpeg,52840.png}` (mixed jpg/jpeg/png; all browser-friendly so no `full/` derivative expected), `./web/gallery/photos/macro/{214389.jpeg,shelf-christmas-decoration.heic}` (HEIC exercises `transcode_needed` + JPEG derivative + lightbox download), `./web/gallery/videos/{214357.mp4,198088.webm}`. `.gitignore` extended with `web/` so the tree isn't tracked.
 
 Goal recap:
 - Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
@@ -30,7 +31,7 @@ Decisions locked:
 4. Subgallery card shows own media count + non-recursive subgallery count.
 5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-Next substep: **Sample tree (10.11)** — under `./web/gallery/` create a nested example so the next smoke run exercises the full recursive path: `./web/gallery/photos/...`, `./web/gallery/photos/macro/...`, `./web/gallery/videos/...`, plus a root-level `./web/gallery/cover.jpg` to exercise media-at-root. Source: copy/rename from existing `./sample-data/` (already mounted on test/shell, gitignored, 1.6 GB). Goal here is purely to assemble the tree on disk — don't run the build yet (smoke is substep 10.13). Confirm `./web/` is gitignored (it should be already) before copying.
+Next substep: **Tests (10.12)** — full sweep of any test still asserting the legacy flat layout. The earlier per-substep rewrites already covered scanner/cache/builder/renderer/watcher/frontend/config — but per the Step 10 plan we still need a final pass that grep-checks the suite for stale assumptions. Concretely: re-read `tests/test_smoke.py`, `tests/test_renderer.py`, `tests/test_scanner_tree.py`, `tests/test_cache.py`, `tests/test_builder_tree.py`, `tests/test_watcher.py`, `tests/test_frontend_assets.py`, `tests/test_image_processor.py`, `tests/test_video_processor.py`, `tests/test_config.py`; ensure none reference `index.html.j2`, `render_index`, the legacy flat `scan()` entrypoint, or `--source` / `--output`. Add coverage gaps if any (e.g. an integration-style test that runs `build_tree()` over a tmp-dir tree mirroring the new sample layout). Then run `docker compose run --rm test` and confirm baseline still holds (116 pass + 2 known HEIC flakes).
 
 Order of attack:
 1. ~~Config (env + dataclass).~~ done
@@ -43,8 +44,9 @@ Order of attack:
 8. ~~Watcher (per-dir dirty propagation under new layout).~~ done
 9. ~~CLI/`__main__` (drop legacy `--source`/`--output`).~~ done
 10. ~~docker-compose.yml.~~ done
-11. Tests rewritten.
-12. Smoke build over nested sample tree.
+11. ~~Sample tree assembled under `./web/gallery/`.~~ done
+12. Tests sweep.
+13. Smoke build over nested sample tree.
 
 Per substep: update TODO.md + NEXT.md + commit.
 
