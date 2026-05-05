@@ -1,9 +1,28 @@
 # NEXT
 
-Step 17 (camera RAW support) landed. Step 16 (CI + slim runtime image) and
-Step 11 mobile-viewport carry-over already closed.
+Full-resolution RAW landed. Step 17 (camera RAW support) + Step 16 (CI + slim
+runtime image) + Step 11 mobile-viewport carry-over already closed.
 
 ## What landed this batch
+
+- `_DCRAW_EMU_ARGS` dropped `-h` (half-size demosaic). RAW JPEG derivatives
+  now carry the sensor's full pixel count: Nikon D800 7378×4924 (~36 MP),
+  Sony A7R II 7968×5320 (~42 MP), Fuji X100S 4934×3296, Canon 1D Mk IV
+  4916×3272. Derivative file sizes grew correspondingly (e.g. A7R II
+  3.3 MB → 12 MB).
+- Decode cost: per-file ~3.5× slower than half-size (4 RAW at workers=4:
+  ~7 s vs ~2 s wall clock; full pipeline incl. EXIF + render: ~38 s vs
+  ~2 s when nothing else needs work). Below the predicted ~10× because the
+  TIFF write + JPEG re-encode dominate over libraw's demosaic step.
+- Module docstring + `_DCRAW_EMU_ARGS` comment reworded to reflect full-res
+  intent. No API or config surface changes.
+- Tests unchanged (no dim assertions in the RAW fixture cases — they only
+  check thumb shape, JPEG output, and GPS strip). Suite: 129 pass, 1 skip.
+- Smoke: re-ran `docker compose run --rm app -v` over `./web/gallery/raws/`
+  against a freshly rebuilt `simplegallery:runtime`; verified pixel dims via
+  `identify` on the four `web/raws/full/*.jpg` outputs.
+
+## Earlier batch — Step 17 (camera RAW support)
 
 - `RAW_IMAGE_EXTENSIONS` module constant in `config.py` covering all common
   camera RAW containers (NEF, NRW, CR2, CR3, CRW, ARW, SRF, SR2, RAF, ORF,
@@ -13,21 +32,18 @@ Step 11 mobile-viewport carry-over already closed.
   — RAWs go through the same JPEG-derivative path as HEIC, with the original
   kept under `<gallery_subdir>/` for download.
 - `image_processor._open_image()` context manager dispatches RAW reads
-  through `dcraw_emu -h -T -w -Z -` (libraw-tools): half-size, white-balanced
-  sRGB TIFF on stdout, parsed by wand as a TIFF blob. Non-RAW formats stay on
-  the existing `Image(filename=…)` path. EXIF for RAW skips wand (no IM
-  decoder) and goes through `exifread`, which reads the TIFF tags off the
-  RAW container.
+  through `dcraw_emu -T -w -Z -` (libraw-tools): full-resolution, white-
+  balanced sRGB TIFF on stdout, parsed by wand as a TIFF blob. Non-RAW
+  formats stay on the existing `Image(filename=…)` path. EXIF for RAW skips
+  wand (no IM decoder) and goes through `exifread`, which reads the TIFF
+  tags off the RAW container.
 - Dockerfile `base` adds `libraw libraw-tools` (~2.7 MiB). Alpine has no
   `dcraw` package and no IM RAW coder; the libraw CLI is the lightest path
   that actually decodes NEF/CR2/ARW/RAF/etc.
 - `tests/test_image_processor.py` parametrized `raw_sample` fixture (NEF /
   CR2 / ARW / RAF) covers thumbnail decode, full → JPEG, and GPS strip.
-  Suite: 129 pass, 1 skip.
-- Smoke verified `web/raws/` derivatives + lightbox links against the four
-  `sample-data/RAWs/*` files; end-to-end ~2 s at workers=4.
 
-## Why dcraw_emu rather than format-hint or `dcraw`
+## Why dcraw_emu rather than format-hint or `dcraw` (Step 17 background)
 
 The first attempt forced `FORMAT:path` so IM would dispatch the correct
 coder for TIFF-magic-mimicking RAW containers (NEF/CR2/ARW/DNG). That fixed
@@ -40,8 +56,8 @@ delegate XML or coder shim required.
 
 ## Next batch
 
-Repo is feature-complete for the original scope plus RAW. Open candidates if
-a new batch is desired:
+Repo is feature-complete for the original scope plus full-res RAW. Open
+candidates if a new batch is desired:
 
 1. **Publish** — push to `github.com/hnsk/simplegallery`, tag `v0.1.0`,
    `python -m build` + `twine upload` to PyPI (image already production-
@@ -51,9 +67,8 @@ a new batch is desired:
 3. **Sample-data CI tests** — gate the currently-skipped EXIF/HEIC/RAW
    cases behind a CI fixture pack (committed under `tests/fixtures/` or
    fetched at job start).
-4. **Full-resolution RAW** — current pipeline uses `-h` (half-size demosaic)
-   for speed. If full-res JPEG derivatives are ever wanted, drop `-h` from
-   `_DCRAW_EMU_ARGS` (~10× slower per file, output dims double).
+4. **Mobile viewport verify** — Step 11 carry-over (Chrome DevTools swipe +
+   EXIF slide-up sheet). Manual browser check, not yet performed.
 
 ## How to reproduce
 

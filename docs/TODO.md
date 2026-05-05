@@ -183,13 +183,17 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **Image processor — libraw decode** — Alpine's ImageMagick has no RAW
   decoder despite advertising `raw` in DELEGATES (the only `raw.so` coder
   handles raw RGB samples, not camera RAW). Added an explicit shell-out to
-  `dcraw_emu -h -T -w -Z -` (libraw-tools): half-size, white-balanced sRGB
+  `dcraw_emu -T -w -Z -` (libraw-tools): full-resolution, white-balanced sRGB
   TIFF on stdout, fed to wand via `Image(blob=…, format="tiff")`. Single
   `_open_image(src)` context manager dispatches: RAW → libraw pipe; everything
-  else → unchanged `Image(filename=…)`. Half demosaic from a 36 MP sensor is
-  ≥9 MP — well above any web display need, ~10× faster than full demosaic.
-  `_read_with_wand` short-circuits RAW (no IM coder) so EXIF falls through to
-  `exifread`, which reads the TIFF tags directly out of the RAW container.
+  else → unchanged `Image(filename=…)`. `_read_with_wand` short-circuits RAW
+  (no IM coder) so EXIF falls through to `exifread`, which reads the TIFF tags
+  directly out of the RAW container.
+- [x] **Full-resolution RAW** — dropped `-h` from `_DCRAW_EMU_ARGS`. JPEG
+  derivatives now carry the sensor's native pixel count (D800 7378×4924,
+  A7R II 7968×5320, X100S 4934×3296, 1D Mk IV 4916×3272). Per-file decode
+  ~3.5× slower than half-size on this sample (4 RAW: ~7 s vs ~2 s at
+  workers=4). 129 pass, 1 skip.
 - [x] **Dockerfile** — added `libraw libraw-tools` to the `base` apk install
   (~2.7 MiB total). No build-time deps; runtime image stays lean.
 - [x] **Tests** — `tests/test_image_processor.py` adds parametrized
@@ -199,10 +203,10 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
   `test_is_raw_classifier` unit cases. Suite: 129 pass, 1 skip.
 - [x] **Smoke** — staged the four `sample-data/RAWs/*.{NEF,CR2,ARW,RAF}` into
   `./web/gallery/raws/`. `docker compose run --rm app -v` produces a
-  `web/raws/` page with `thumbs/<slug>.webp` + `full/<slug>.jpg` (0.7-3.4 MB
-  derivatives) and lightbox links wiring `data-src=full/...jpg` +
+  `web/raws/` page with `thumbs/<slug>.webp` + `full/<slug>.jpg` (full-res:
+  2.3-12 MB derivatives) and lightbox links wiring `data-src=full/...jpg` +
   `data-original=../gallery/raws/<ORIGINAL>.{NEF,CR2,ARW,RAF}` — same shape
-  as HEIC. End-to-end ~2 s for the 4 files at workers=4.
+  as HEIC. End-to-end ~7 s for the 4 files at workers=4.
 
 ## Step 16 — CI + slim runtime image
 

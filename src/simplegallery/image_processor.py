@@ -1,10 +1,10 @@
 """Image processing: thumbnails, full-size derivatives, EXIF extraction.
 
 Backed by Wand (ImageMagick + libheif). Camera RAW (NEF/CR2/CR3/ARW/RAF/DNG/...)
-goes through libraw's ``dcraw_emu`` first — it produces a half-size, white-
-balanced sRGB TIFF on stdout which Wand then reads as a normal TIFF blob. This
-avoids relying on an IM raw delegate (Alpine's IM build has none) and gives
-deterministic, decoder-correct results regardless of the RAW container's
+goes through libraw's ``dcraw_emu`` first — it produces a full-resolution,
+white-balanced sRGB TIFF on stdout which Wand then reads as a normal TIFF blob.
+This avoids relying on an IM raw delegate (Alpine's IM build has none) and
+gives deterministic, decoder-correct results regardless of the RAW container's
 TIFF-magic-byte mimicry.
 
 EXIF read uses Wand's metadata first and falls back to exifread for formats /
@@ -42,12 +42,12 @@ FULL_QUALITY = 92
 
 _GPS_PREFIX = "exif:GPS"
 
-# libraw CLI used to demosaic camera RAW into TIFF. ``-h`` half-size demosaic
-# (≥9 MP from a 36 MP sensor — plenty for any web gallery, ~10× faster than
-# full demosaic), ``-T`` TIFF output, ``-Z -`` write to stdout, ``-w`` apply
-# camera white balance (otherwise the result is grey-cast).
+# libraw CLI used to demosaic camera RAW into TIFF. ``-T`` TIFF output,
+# ``-Z -`` write to stdout, ``-w`` apply camera white balance (otherwise the
+# result is grey-cast). Full-resolution demosaic — ~10× slower than ``-h``
+# half-size, but the JPEG derivative carries the sensor's full pixel count.
 _DCRAW_EMU = "dcraw_emu"
-_DCRAW_EMU_ARGS: tuple[str, ...] = ("-h", "-T", "-w", "-Z", "-")
+_DCRAW_EMU_ARGS: tuple[str, ...] = ("-T", "-w", "-Z", "-")
 
 
 def _is_raw(src: Path) -> bool:
