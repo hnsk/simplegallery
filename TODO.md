@@ -53,14 +53,14 @@
 - [x] `tests/test_frontend_assets.py` — packaged asset payload + `copy_assets` emits CSS/JS/icons
 
 ## Step 6 — Video processor
-- [ ] `src/simplegallery/video_processor.py`
+- [x] `src/simplegallery/video_processor.py`
   - `probe()` — ffprobe JSON → `VideoInfo` (width, height, duration, codec, has_audio)
   - `generate_thumbnail()` — seek to `min(1.0, duration*0.1)`, pipe frame → wand → WebP
   - `transcode_mp4()` — libx264 CRF23, preset slow, AAC 128k, faststart, even-dim scale
   - `transcode_webm()` — libvpx-vp9 CRF33 b:v 0, libopus 96k; skip audio if `has_audio=False`
-- [ ] Wire into `builder.py`
-- [ ] `tests/fixtures/` — short sample mp4 (≤2s, low-res)
-- [ ] `tests/test_video_processor.py` — `probe()` returns expected fields; thumb generated; mp4 + webm produced; transcode tests marked `@pytest.mark.slow`
+- [x] Wire into `builder.py`
+- [x] Test fixture clip generated at runtime via `ffmpeg -f lavfi testsrc/sine` (session-scoped, no committed binary)
+- [x] `tests/test_video_processor.py` — `probe()` returns expected fields; thumb generated; mp4 + webm produced; transcode tests marked `@pytest.mark.slow`
 
 ## Step 7 — Docker
 - [x] `Dockerfile` — `python:3.12-alpine`, `apk add --no-cache imagemagick imagemagick-dev libheif-dev libwebp-dev tiff-dev ffmpeg`, pip install (incl. `pytest`), VOLUME, ENTRYPOINT

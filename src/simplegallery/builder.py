@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import image_processor
+from . import image_processor, video_processor
 from .cache import BuildCache
 from .config import Config
 from .renderer import Renderer
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 class GalleryBuilder:
-    """Coordinate scanner, cache, image processor, renderer (videos: Step 6)."""
+    """Coordinate scanner, cache, image + video processors, renderer."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -39,6 +39,9 @@ class GalleryBuilder:
 
         images = [m for g in galleries for m in g.images]
         exif_by_path = self._process_images(images)
+
+        videos = [m for g in galleries for m in g.videos]
+        self._process_videos(videos)
 
         rendered: list[Path] = [self.renderer.render_index(galleries)]
         for gallery in galleries:
@@ -80,6 +83,31 @@ class GalleryBuilder:
         except Exception as exc:
             log.debug("exif read failed: %s (%s)", media.source, exc)
             return {}
+
+    # --- video pipeline -------------------------------------------------
+
+    def _process_videos(self, videos: list[MediaFile]) -> None:
+        if not videos:
+            return
+        workers = max(1, int(self.config.workers))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(self._process_video, m): m for m in videos}
+            for fut in as_completed(futures):
+                media = futures[fut]
+                try:
+                    fut.result()
+                except Exception as exc:
+                    log.warning("video failed: %s (%s)", media.source, exc)
+
+    def _process_video(self, media: MediaFile) -> None:
+        if not self.cache.is_stale(media):
+            return
+        assert media.output_mp4 is not None and media.output_webm is not None
+        info = video_processor.probe(media.source)
+        video_processor.generate_thumbnail(media.source, media.output_thumb, info=info)
+        video_processor.transcode_mp4(media.source, media.output_mp4, info=info)
+        video_processor.transcode_webm(media.source, media.output_webm, info=info)
+        self.cache.mark_done(media)
 
     @staticmethod
     def _exif_for_gallery(
