@@ -24,7 +24,9 @@ class GalleryBuilder:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.scanner = DirectoryScanner(config)
-        self.cache = BuildCache(config.output)
+        self.cache = BuildCache(
+            config.output, reserved_root_names=config.reserved_root_names
+        )
         self.renderer = Renderer(config)
 
     def build_all(self) -> list[Path]:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -40,9 +39,16 @@ class _Entry:
 class BuildCache:
     """Per-source-file record of size/mtime + emitted output paths."""
 
-    def __init__(self, output: Path) -> None:
+    def __init__(
+        self,
+        output: Path,
+        reserved_root_names: Iterable[str] = (),
+    ) -> None:
         self.output = output
         self.path = output / CACHE_FILENAME
+        # Top-level names under ``output`` that prune must never traverse into
+        # or remove (e.g. ``gallery`` user originals, ``assets`` build output).
+        self.reserved_root_names: frozenset[str] = frozenset(reserved_root_names)
         self._entries: dict[str, _Entry] = {}
 
     def load(self) -> None:
@@ -101,20 +107,30 @@ class BuildCache:
         os.replace(tmp, self.path)
 
     def prune(self, galleries: Iterable[Gallery]) -> list[Path]:
-        """Drop cache entries for missing sources, delete orphan output files/dirs.
+        """Drop stale cache entries and unlink the orphan output files they
+        owned. Then rmdir empty ancestor directories left behind, stopping at
+        ``output`` itself or any reserved top-level name.
+
+        Galleries may be passed as a flat list or as roots of a nested tree;
+        ``Gallery.walk()`` is used to traverse descendants. We never delete
+        files/dirs the cache did not record as ours, so user-managed paths
+        (originals under ``gallery/``, files in ``assets/``, top-level
+        ``index.html``) are left untouched.
 
         Returns the list of paths removed (for logging/testing).
         """
-        galleries_list = list(galleries)
-        active_sources = {self._key(m.source) for g in galleries_list for m in g.media}
-        active_slugs = {g.slug for g in galleries_list}
+        flat: list[Gallery] = []
+        for g in galleries:
+            flat.extend(g.walk())
+
+        active_sources = {self._key(m.source) for g in flat for m in g.media}
         expected_outputs = {
-            self._rel(p) for g in galleries_list for m in g.media for p in m.output_paths()
+            self._rel(p) for g in flat for m in g.media for p in m.output_paths()
         }
 
         removed: list[Path] = []
+        parents_to_check: set[Path] = set()
 
-        # 1. drop stale cache entries; collect their orphan outputs
         for key in list(self._entries):
             if key in active_sources:
                 continue
@@ -123,29 +139,48 @@ class BuildCache:
                 if rel in expected_outputs:
                     continue
                 target = self.output / rel
-                if target.exists():
-                    try:
-                        target.unlink()
-                        removed.append(target)
-                    except OSError as exc:
-                        log.warning("could not remove orphan output %s: %s", target, exc)
-
-        # 2. drop orphan gallery directories (slug not in active set)
-        if self.output.is_dir():
-            for entry in self.output.iterdir():
-                if not entry.is_dir():
-                    continue
-                if entry.name in active_slugs:
-                    continue
-                if entry.name.startswith(".") or entry.name == "assets":
+                if not target.exists() or not target.is_file():
                     continue
                 try:
-                    shutil.rmtree(entry)
-                    removed.append(entry)
+                    target.unlink()
+                    removed.append(target)
+                    parents_to_check.add(target.parent)
                 except OSError as exc:
-                    log.warning("could not remove orphan dir %s: %s", entry, exc)
+                    log.warning("could not remove orphan output %s: %s", target, exc)
+
+        reserved_dirs = {self.output / name for name in self.reserved_root_names}
+        for parent in parents_to_check:
+            self._rmdir_upward(parent, reserved_dirs, removed)
 
         return removed
+
+    def _rmdir_upward(
+        self, start: Path, reserved: set[Path], removed: list[Path]
+    ) -> None:
+        """Remove ``start`` and each empty parent until we hit ``output``,
+        a reserved top-level dir, or a non-empty / missing dir.
+        """
+        cur = start
+        while True:
+            if cur == self.output:
+                return
+            if cur in reserved:
+                return
+            if not cur.is_dir():
+                return
+            try:
+                next(cur.iterdir())
+                return  # not empty
+            except StopIteration:
+                pass
+            except OSError:
+                return
+            try:
+                cur.rmdir()
+            except OSError:
+                return
+            removed.append(cur)
+            cur = cur.parent
 
     @staticmethod
     def _key(source: Path) -> str:
