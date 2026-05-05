@@ -19,6 +19,9 @@ input/
 output/
 gallery_output/
 
+# Sample media for ad-hoc test trees (copy/rename into source/ subdirs)
+sample-data/
+
 # Gallery build cache
 .gallery_cache.json
 

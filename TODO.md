@@ -73,6 +73,9 @@
 - [ ] Wire `--watch` flag in `__main__.py` → `WatcherService`
 - [ ] `tests/test_watcher.py` — handler unit tests: file event → dirty slug; dir create/delete → index dirty; debounce coalesces bursts
 
+## Test fixtures
+- `sample-data/` — real images (jpg/jpeg/png/heic) + videos (mp4/webm) for ad-hoc verification. Gitignored. Copy/rename into multiple `source/<gallery>/` subdirs to exercise scanner, slug collisions, image+video processors, and gallery output. Do not commit.
+
 ## Step 9 — Polish + verification
 - [ ] Per-file error handling — log error + skip, don't abort whole build
 - [ ] `docker compose run test` — all tests pass
