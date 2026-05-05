@@ -1,15 +1,15 @@
 # simplegallery TODO
 
 ## Step 0 — Project init
-- [ ] `.gitignore` — `__pycache__/`, `*.pyc`, `.gallery_cache.json`, `output/`, `.venv/`, `dist/`, `*.egg-info/`, `.pytest_cache/`
-- [ ] `NEXT.md` — seed with "next: Step 1 scaffold"
-- [ ] `git init` + initial commit
+- [x] `.gitignore` — `__pycache__/`, `*.pyc`, `.gallery_cache.json`, `output/`, `.venv/`, `dist/`, `*.egg-info/`, `.pytest_cache/`
+- [x] `NEXT.md` — seed with "next: Step 1 scaffold"
+- [x] `git init` + initial commit
 
 ## Step 1 — Scaffold: config + CLI + entry point
-- [ ] `pyproject.toml` — runtime deps + dev deps (`pytest`); entry point `simplegallery=simplegallery.__main__:main`
-- [ ] `src/simplegallery/config.py` — `Config` dataclass (incl. `log_level`), load env vars, defaults
-- [ ] `src/simplegallery/cli.py` — argparse: `--source`, `--output`, `--title`, `--watch`, `--workers`, `--verbose/-v`
-- [ ] `src/simplegallery/__main__.py` — parse args → build Config → `logging.basicConfig(level=...)` → call builder or watcher
+- [x] `pyproject.toml` — runtime deps + dev deps (`pytest`); entry point `simplegallery=simplegallery.__main__:main`
+- [x] `src/simplegallery/config.py` — `Config` dataclass (incl. `log_level`), load env vars, defaults
+- [x] `src/simplegallery/cli.py` — argparse: `--source`, `--output`, `--title`, `--watch`, `--workers`, `--verbose/-v`
+- [x] `src/simplegallery/__main__.py` — parse args → build Config → `logging.basicConfig(level=...)` → call builder or watcher
 
 ## Step 2 — Scanner + cache
 - [ ] `src/simplegallery/slugify.py` — `slugify(name)` → ascii, lowercase, hyphenated, collision-safe

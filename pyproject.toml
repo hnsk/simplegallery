@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simplegallery"
+version = "0.1.0"
+description = "Static photo and video gallery generator"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "hanski", email = "hanski@gmail.com" }]
+dependencies = [
+    "Jinja2>=3.1",
+    "Wand>=0.6.13",
+    "exifread>=3.0",
+    "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+simplegallery = "simplegallery.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+simplegallery = ["templates/*.j2", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: slow tests (e.g. video transcode)",
+]
