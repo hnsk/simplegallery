@@ -4,14 +4,13 @@ services:
       context: .
     image: simplegallery:dev
     environment:
-      SIMPLEGALLERY_SOURCE: /source
-      SIMPLEGALLERY_OUTPUT: /output
+      SIMPLEGALLERY_WEB: /web
+      SIMPLEGALLERY_GALLERY_SUBDIR: ${SIMPLEGALLERY_GALLERY_SUBDIR:-gallery}
       SIMPLEGALLERY_TITLE: ${SIMPLEGALLERY_TITLE:-Gallery}
       SIMPLEGALLERY_WORKERS: ${SIMPLEGALLERY_WORKERS:-4}
       SIMPLEGALLERY_LOG_LEVEL: ${SIMPLEGALLERY_LOG_LEVEL:-INFO}
     volumes:
-      - ${SIMPLEGALLERY_SOURCE_DIR:-./source}:/source:ro
-      - ${SIMPLEGALLERY_OUTPUT_DIR:-./output}:/output
+      - ${SIMPLEGALLERY_WEB_DIR:-./web}:/web
     restart: unless-stopped
 
   test:
