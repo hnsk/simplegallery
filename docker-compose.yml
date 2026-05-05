@@ -23,6 +23,7 @@ services:
     working_dir: /app
     environment:
       SIMPLEGALLERY_SAMPLE_DATA: /sample-data
+      MAGICK_TIME_LIMIT: "86400"
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests
@@ -39,6 +40,7 @@ services:
     working_dir: /app
     environment:
       SIMPLEGALLERY_SAMPLE_DATA: /sample-data
+      MAGICK_TIME_LIMIT: "86400"
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Callable
 
 from watchdog.events import (
+    EVENT_TYPE_CLOSED_NO_WRITE,
+    EVENT_TYPE_OPENED,
     DirCreatedEvent,
     DirDeletedEvent,
     DirMovedEvent,
@@ -15,6 +17,8 @@ from watchdog.events import (
     FileSystemEventHandler,
 )
 from watchdog.observers import Observer
+
+_IGNORED_EVENT_TYPES = frozenset({EVENT_TYPE_OPENED, EVENT_TYPE_CLOSED_NO_WRITE})
 
 from .builder import GalleryBuilder
 from .config import Config
@@ -49,6 +53,8 @@ class GalleryEventHandler(FileSystemEventHandler):
     # --- watchdog hook --------------------------------------------------
 
     def on_any_event(self, event: FileSystemEvent) -> None:
+        if event.event_type in _IGNORED_EVENT_TYPES:
+            return
         names: set[str] = set()
         index_change = False
 

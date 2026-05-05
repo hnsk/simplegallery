@@ -12,9 +12,11 @@ from watchdog.events import (
     DirCreatedEvent,
     DirDeletedEvent,
     DirMovedEvent,
+    FileClosedNoWriteEvent,
     FileCreatedEvent,
     FileDeletedEvent,
     FileModifiedEvent,
+    FileOpenedEvent,
 )
 
 from simplegallery.watcher import GalleryEventHandler
@@ -138,6 +140,16 @@ def test_hidden_top_level_ignored(src: Path) -> None:
     hidden = src / ".cache"
     h.dispatch(FileCreatedEvent(str(hidden / "x.jpg")))
     assert not rec.wait(0.25)
+
+
+def test_read_only_open_close_events_ignored(src: Path) -> None:
+    """FileOpenedEvent / FileClosedNoWriteEvent fire when the build reads source files;
+    they must not retrigger a rebuild or the watcher loops forever."""
+    rec = _Recorder()
+    h = _handler(src, debounce=0.05, recorder=rec)
+    h.dispatch(FileOpenedEvent(str(src / "alpha" / "img.jpg")))
+    h.dispatch(FileClosedNoWriteEvent(str(src / "alpha" / "img.jpg")))
+    assert not rec.wait(0.25), "read-only opens must not trigger rebuild"
 
 
 def test_flush_now_drains_state(src: Path) -> None:

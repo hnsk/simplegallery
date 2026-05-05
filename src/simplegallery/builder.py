@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from . import image_processor, video_processor
@@ -11,6 +12,8 @@ from .cache import BuildCache
 from .config import Config
 from .renderer import Renderer
 from .scanner import DirectoryScanner, Gallery, MediaFile
+
+_MP_CTX = mp.get_context("spawn")
 
 log = logging.getLogger(__name__)
 
@@ -88,34 +91,44 @@ class GalleryBuilder:
     # --- image pipeline -------------------------------------------------
 
     def _process_images(self, images: list[MediaFile]) -> dict[Path, dict]:
-        """Run thumbnail + full + EXIF for each image. Returns EXIF keyed by source path."""
+        """Run thumbnail + full + EXIF for each image. Returns EXIF keyed by source path.
+
+        Uses a process pool because ImageMagick / Wand is not thread-safe; concurrent
+        wand calls in the same process collide on the global pixel cache.
+        """
         exif: dict[Path, dict] = {}
         if not images:
             return exif
 
         workers = max(1, int(self.config.workers))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(self._process_image, m): m for m in images}
+        stale_specs: list[tuple[Path, Path, Path]] = []
+        media_by_src: dict[Path, MediaFile] = {}
+        for media in images:
+            media_by_src[media.source] = media
+            if self.cache.is_stale(media):
+                assert media.output_full is not None
+                stale_specs.append((media.source, media.output_thumb, media.output_full))
+
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
+            futures = {pool.submit(_image_worker, spec): spec for spec in stale_specs}
             for fut in as_completed(futures):
-                media = futures[fut]
+                src, _, _ = futures[fut]
+                try:
+                    fut.result()
+                    self.cache.mark_done(media_by_src[src])
+                except Exception as exc:
+                    log.warning("image failed: %s (%s)", src, exc)
+
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
+            exif_futures = {pool.submit(_exif_worker, m.source): m for m in images}
+            for fut in as_completed(exif_futures):
+                media = exif_futures[fut]
                 try:
                     exif[media.source] = fut.result()
                 except Exception as exc:
-                    log.warning("image failed: %s (%s)", media.source, exc)
+                    log.debug("exif read failed: %s (%s)", media.source, exc)
+                    exif[media.source] = {}
         return exif
-
-    def _process_image(self, media: MediaFile) -> dict:
-        """Per-image worker: regenerate outputs if stale, always read EXIF."""
-        if self.cache.is_stale(media):
-            assert media.output_full is not None  # scanner guarantees for images
-            image_processor.generate_thumbnail(media.source, media.output_thumb)
-            image_processor.generate_full(media.source, media.output_full)
-            self.cache.mark_done(media)
-        try:
-            return image_processor.extract_exif(media.source)
-        except Exception as exc:
-            log.debug("exif read failed: %s (%s)", media.source, exc)
-            return {}
 
     # --- video pipeline -------------------------------------------------
 
@@ -152,3 +165,13 @@ class GalleryBuilder:
             if data:
                 out[media.slug] = data
         return out
+
+
+def _image_worker(spec: tuple[Path, Path, Path]) -> None:
+    src, thumb, full = spec
+    image_processor.generate_thumbnail(src, thumb)
+    image_processor.generate_full(src, full)
+
+
+def _exif_worker(src: Path) -> dict:
+    return image_processor.extract_exif(src)
