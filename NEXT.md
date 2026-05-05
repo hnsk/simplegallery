@@ -1,11 +1,12 @@
 # NEXT
 
-Step 14 (pre-publish cleanup) opened. First two items landed in commit `4855bd3`:
+Step 14 (pre-publish cleanup) opened. First items landed:
 
 - `README.md` written (layout diagram, Docker workflow matrix, config table, GPS privacy caveat).
 - `LICENSE` written (MIT, matches `pyproject.toml`).
 - `.gitignore` trimmed: dropped legacy pre-Step-10 bind-mount dirs (`source/`, `photos/`, `input/`, `output/`, `gallery_output/`). Only `web/` + `sample-data/` remain ignored alongside the standard Python/editor cruft.
 - Stale tree wiped by user: `output/`, `source/`, `web/gallery/1920.webp*`, root-level `web/gallery/198088.webm`, orphan transcoded outputs under `web/{photos,videos}/video/`.
+- `docker-compose.yml` reshaped: `app` now defaults to `--watch -v` so `docker compose up` runs only the watcher. `test` / `shell` / `serve` moved behind `profiles: ["dev"]` (start via `docker compose run --rm <svc>` or `docker compose --profile dev up <svc>`). Host volume var renamed `SIMPLEGALLERY_WEB_DIR` → `SIMPLEGALLERY_WEB` (default `./web`); container-side `SIMPLEGALLERY_WEB=/web` unchanged. README usage section rewritten to match.
 
 Repo state: feature-complete through Step 13. Suite passes 113 + 1 skip in docker. README + LICENSE on disk. No PyPI metadata yet.
 

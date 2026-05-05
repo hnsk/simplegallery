@@ -38,30 +38,30 @@ Names reserved at the web root: `assets`, `index.html`, and the gallery subdir (
 
 ## Usage
 
+### Watch mode (default)
+
+```sh
+docker compose up
+```
+
+Runs `app` with `--watch -v`: initial full build, then debounced rebuilds on filesystem changes under `/web/gallery/`. Default mount: `./web/` → `/web/` (override with `SIMPLEGALLERY_WEB`).
+
 ### One-shot build
 
 ```sh
 docker compose run --rm app -v
 ```
 
-Default mount: `./web/` → `/web/` (override with `SIMPLEGALLERY_WEB_DIR`).
-
-### Watch mode
-
-```sh
-SIMPLEGALLERY_WATCH=1 docker compose up app
-```
-
-Initial full build, then debounced rebuilds on filesystem changes under `/web/gallery/`.
-
 ### Browse the result
 
+Dev-only services live behind the `dev` profile so `docker compose up` keeps the runtime stack to just `app`:
+
 ```sh
-docker compose up -d serve   # http://127.0.0.1:8080/
-docker compose stop serve
+docker compose --profile dev up -d serve   # http://127.0.0.1:8080/
+docker compose --profile dev stop serve
 ```
 
-Override the port with `SIMPLEGALLERY_SERVE_PORT`.
+Override the port with `SIMPLEGALLERY_SERVE_PORT`. `docker compose run --rm <svc>` starts a profiled service without activating the profile.
 
 ### Tests
 
