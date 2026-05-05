@@ -96,10 +96,10 @@ def test_apply_args_gallery_subdir(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.source == Path("/tmp/site/pics")
 
 
-def test_apply_args_legacy_source_output(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_args_no_legacy_source_output(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SIMPLEGALLERY_WEB", raising=False)
-    cfg = Config.from_env()
-    args = _parse(["--source", "/a", "--output", "/b"])
-    apply_args(cfg, args)
-    assert cfg.source == Path("/a")
-    assert cfg.output == Path("/b")
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--source", "/a"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--output", "/b"])

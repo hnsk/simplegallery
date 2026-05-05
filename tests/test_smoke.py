@@ -16,10 +16,10 @@ def test_version_present() -> None:
 def test_cli_overrides_config() -> None:
     ns = parse_args(
         [
-            "--source",
-            "/tmp/s",
-            "--output",
-            "/tmp/o",
+            "--web",
+            "/tmp/site",
+            "--gallery-subdir",
+            "pics",
             "--title",
             "Hello",
             "--watch",
@@ -29,8 +29,10 @@ def test_cli_overrides_config() -> None:
         ]
     )
     cfg = apply_args(Config.from_env(), ns)
-    assert str(cfg.source) == "/tmp/s"
-    assert str(cfg.output) == "/tmp/o"
+    assert str(cfg.web_root) == "/tmp/site"
+    assert cfg.gallery_subdir == "pics"
+    assert str(cfg.source) == "/tmp/site/pics"
+    assert str(cfg.output) == "/tmp/site"
     assert cfg.title == "Hello"
     assert cfg.watch is True
     assert cfg.workers == 8

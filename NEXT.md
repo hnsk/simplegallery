@@ -3,6 +3,7 @@
 Step 10 in progress — `/web` web-root layout with originals served directly + recursive galleries.
 
 Completed substeps:
+
 1. **Config** — done. `Config(web_root, gallery_subdir)`; `source`/`output` derived. Env: `SIMPLEGALLERY_WEB`, `SIMPLEGALLERY_GALLERY_SUBDIR`. CLI: `--web`, `--gallery-subdir` added; legacy `--source`/`--output` kept transitionally. Reserved-name set + `direct_image_extensions` introduced. Tests in `tests/test_config.py`.
 2. **Scanner** — done. New `DirectoryScanner.scan_tree()` returns recursive root `Gallery` (or `None`). `Gallery` gains `subgalleries`/`rel_path`/`breadcrumbs`/`subcount`/`walk()`. Reserved root-level names skipped + warned only at depth 0. Empty branches pruned. `MediaFile` gains `transcode_needed` + `original_rel`; tree-mode emits `output_full` only when transcode needed (HEIC/TIFF). Legacy flat `scan()` still works for builder/renderer/watcher until their substeps. Tests in `tests/test_scanner_tree.py` (15 cases).
 3. **Cache** — done. `BuildCache(output, reserved_root_names=...)`; builder threads `Config.reserved_root_names` through. `prune` rewritten: walks galleries via `Gallery.walk()`, removes only cache-tracked orphan files, then rmdirs empty ancestor dirs upward, stopping at `output` and reserved top-levels (`gallery/`, `assets/`). Untracked dirs/files left alone. Tests rewritten in `tests/test_cache.py` (12 pass).
@@ -11,6 +12,7 @@ Completed substeps:
 6. **Renderer + templates** — done. `Renderer.render_gallery` is now the only page entrypoint (root + nested both use `gallery.html.j2`). `render_index` / `_index_entry` / `index.html.j2` removed. New `_breadcrumbs.html.j2` partial driven by renderer-prepared `breadcrumbs` ctx. Subgallery cards inlined above the media grid in `gallery.html.j2`. Lightbox `data-src` resolves to `media.output_full` (JPEG derivative) when a transcode happened, otherwise to `web_root / media.original_rel` relative to `page_dir`. `data-original` emitted on every figure. Tests rewritten in `tests/test_renderer.py` (13 tree-mode cases).
 7. **Frontend (CSS/JS)** — done. JS: `Lightbox._build()` injects `<a class="lightbox-download" download hidden>↓</a>`. New `_setDownload(item)` populates `href` from `item.original` (read via `figure.dataset.original`) and sets the `download` attr to the basename derived from the URL. CSS: `.breadcrumbs`, `.subgallery-grid`, `.subgallery-card`, `.subgallery-card--text`, `.lightbox-download` added; dead `.index-grid` rules dropped. `tests/test_frontend_assets.py` pins all new selectors.
 8. **Watcher** — done. `GalleryEventHandler` now tracks a `dirty_rels: set[str]` of POSIX source-dir rel paths under `config.source` (`""` denotes the root). File events mark the parent dir; dir create/delete mark the dir itself; dir moves mark both endpoints. Hidden components anywhere in the path are filtered. `FlushCallback` simplified to `Callable[[set[str]], None]`; `index_dirty` removed (every dir is its own page now, and ancestor re-render is handled by the builder). `WatcherService._rebuild` calls `builder.build_galleries(dirty_rels)`. Builder gains a real partial path: `_process_images` split into `_process_image_pipeline` (thumb+full, gated by `cache.is_stale`) and `_extract_exif_batch` (EXIF for any rendered image). `build_galleries(dirty_rels)` scans the full tree, scopes media processing to dirty rels and their descendants, and re-renders dirty + every ancestor (so subgallery cards stay in sync). Tests rewritten in `tests/test_watcher.py` (15 cases). Suite: 116 pass, 1 skip, 2 known sample-data HEIC flakes.
+9. **CLI / `__main__`** — done. Legacy `--source` / `--output` argparse flags + their `apply_args` branches removed; help text on `--web` now describes the single-mount layout. `__main__.py` wiring unchanged (already routes through `Config.from_env()` + `apply_args`). `tests/test_smoke.py::test_cli_overrides_config` rewritten around `--web` / `--gallery-subdir`. `tests/test_config.py::test_apply_args_no_legacy_source_output` asserts the legacy flags now raise `SystemExit`. Suite: 116 pass, 1 skip, 2 pre-existing HEIC sample-data flakes.
 
 Goal recap:
 - Single mount: `/web`. User originals at `/web/<gallery_subdir>/` (default `gallery/`). Output (HTML + assets + thumbs + transcoded derivatives) at `/web/`.
@@ -27,7 +29,7 @@ Decisions locked:
 4. Subgallery card shows own media count + non-recursive subgallery count.
 5. We own `/web/` root; user-supplied content lives only inside `<gallery_subdir>/`.
 
-Next substep: **CLI / `__main__` (10.9)** — drop legacy `--source` / `--output` flags now that the watcher rides on `config.source` derived from `web_root`. Update `cli.py` argparse, `__main__.py` wiring, and help text. Refresh `tests/test_smoke.py::test_cli_overrides_config` to assert the new flags only. Sanity-check `Config.from_env` already covers env-only callers.
+Next substep: **docker-compose.yml (10.10)** — collapse the split `${SIMPLEGALLERY_SOURCE_DIR:-./source}:/source:ro` + `${SIMPLEGALLERY_OUTPUT_DIR:-./output}:/output` mounts on the `app` service into one `${SIMPLEGALLERY_WEB_DIR:-./web}:/web` rw mount. Drop the `SIMPLEGALLERY_SOURCE` / `SIMPLEGALLERY_OUTPUT` env vars (no longer read by `Config.from_env`); add `SIMPLEGALLERY_WEB=/web` (and optionally `SIMPLEGALLERY_GALLERY_SUBDIR=gallery`). `test` and `shell` services keep their `./src`, `./tests`, `./pyproject.toml`, `./sample-data` mounts; only the `app` service changes. Verify `docker compose config` still parses and `docker compose run --rm test` is still green afterwards.
 
 Order of attack:
 1. ~~Config (env + dataclass).~~ done
@@ -38,7 +40,7 @@ Order of attack:
 6. ~~Renderer + templates (breadcrumbs, subgallery cards, original href, download data, drop separate index template).~~ done
 7. ~~Frontend (download button + subgallery + breadcrumb styling).~~ done
 8. ~~Watcher (per-dir dirty propagation under new layout).~~ done
-9. CLI/`__main__` (drop legacy `--source`/`--output`).
+9. ~~CLI/`__main__` (drop legacy `--source`/`--output`).~~ done
 10. docker-compose.yml.
 11. Tests rewritten.
 12. Smoke build over nested sample tree.
