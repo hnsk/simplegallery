@@ -17,6 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=config.log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout,
     )
     log.debug("config: %s", config)
 

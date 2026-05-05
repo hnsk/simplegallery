@@ -84,8 +84,11 @@ def test_build_tree_nested_page_uses_gallery_relative_paths(cfg: Config) -> None
 def test_build_tree_video_outputs_referenced(cfg: Config) -> None:
     GalleryBuilder(cfg).build_tree()
     html = (cfg.output / "videos" / "index.html").read_text(encoding="utf-8")
-    assert 'data-mp4="video/clip.mp4"' in html
-    assert 'data-webm="video/clip.webm"' in html
+    # mp4 is browser-friendly → played from gallery original; no webm derivative.
+    assert 'data-mp4="../gallery/videos/clip.mp4"' in html
+    assert "data-webm=" not in html
+    # No transcoded output dir created for direct-format videos.
+    assert not (cfg.output / "videos" / "video").exists()
 
 
 def test_build_tree_empty_tree_returns_no_pages(tmp_path: Path) -> None:

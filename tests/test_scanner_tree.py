@@ -130,9 +130,23 @@ def test_scan_tree_video_outputs(web: Path) -> None:
     assert root is not None
     videos = next(g for g in root.subgalleries if g.name == "videos")
     clip = next(m for m in videos.videos if m.source.name == "clip.mp4")
-    assert clip.output_mp4 == web / "videos" / "video" / "clip.mp4"
-    assert clip.output_webm == web / "videos" / "video" / "clip.webm"
+    # mp4 is browser-friendly → no transcode, original is referenced directly
+    assert clip.output_mp4 is None
+    assert clip.output_webm is None
     assert clip.transcode_needed is False
+
+
+def test_scan_tree_video_transcode_needed(tmp_path: Path) -> None:
+    """Non-browser-friendly containers (.mov/.mkv/.avi) emit mp4+webm derivatives."""
+    web = tmp_path / "web"
+    _touch(web / "gallery" / "clips" / "raw.mov")
+    root = DirectoryScanner(_config(web)).scan_tree()
+    assert root is not None
+    clips = next(g for g in root.subgalleries if g.name == "clips")
+    raw = next(m for m in clips.videos if m.source.name == "raw.mov")
+    assert raw.output_mp4 == web / "clips" / "video" / "raw.mp4"
+    assert raw.output_webm == web / "clips" / "video" / "raw.webm"
+    assert raw.transcode_needed is True
 
 
 def test_scan_tree_original_rel_relative_to_web_root(web: Path) -> None:

@@ -196,6 +196,12 @@ class Renderer:
             item["mp4"] = self._rel(media.output_mp4, page_dir)
         if media.output_webm is not None:
             item["webm"] = self._rel(media.output_webm, page_dir)
+        if media.is_video and media.output_mp4 is None and media.output_webm is None:
+            ext = media.source.suffix.lower()
+            if ext == ".mp4" and original_href is not None:
+                item["mp4"] = original_href
+            elif ext == ".webm" and original_href is not None:
+                item["webm"] = original_href
         serialized = serialize_exif(exif)
         if serialized is not None:
             item["exif"] = serialized

@@ -183,8 +183,9 @@ def test_render_video_data_original_points_at_source(cfg: Config) -> None:
     out = renderer.render_gallery(videos)
 
     html = out.read_text(encoding="utf-8")
-    assert 'data-mp4="video/clip.mp4"' in html
-    assert 'data-webm="video/clip.webm"' in html
+    # Browser-friendly mp4 is played from the original; no separate derivatives.
+    assert 'data-mp4="../gallery/videos/clip.mp4"' in html
+    assert "data-webm=" not in html
     assert 'data-original="../gallery/videos/clip.mp4"' in html
 
 

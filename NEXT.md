@@ -1,6 +1,14 @@
 # NEXT
 
-HEIC + multi-worker flake resolved (TODO Step 11). Root cause: `docker/imagemagick-policy.xml` had `<policy domain="resource" name="time" value="unlimited"/>`; ImageMagick 7.1.2 parses that as `0 seconds` (visible via `magick -list resource` → `Time: 0 years`), tripping immediate `time limit exceeded` at `error/cache.c/GetImagePixelCache/1743` on slow decodes (HEIC dominant; jpg/png almost never). Fix: removed bogus `time` policy line entirely (default = truly unlimited) + dropped `thread=4` → `thread=1` (process pool already provides parallelism; nested IM threads = oversubscription).
+Step 12 (runtime polish) landed: per-file stdout progress logs + direct-video passthrough so `.mp4`/`.webm` originals are referenced from `gallery/` rather than re-encoded into `web/<rel>/video/`. Suite 111 pass, 1 skip.
+
+Stale orphan dirs from prior builds (`web/video/`, `web/<sub>/video/`) are not touched by `cache.prune` because the matching cache entries still resolve to the same active sources; rewriting them just shrinks the recorded outputs list. Manual cleanup or a fresh wipe of `web/` (sans `web/gallery/`) recovers the disk space.
+
+Next: pick the deferred mobile-viewport lightbox verify (Step 11 carry-over) or surface a new initiative.
+
+---
+
+Earlier resolved: HEIC + multi-worker flake (TODO Step 11). Root cause: `docker/imagemagick-policy.xml` had `<policy domain="resource" name="time" value="unlimited"/>`; ImageMagick 7.1.2 parses that as `0 seconds` (visible via `magick -list resource` → `Time: 0 years`), tripping immediate `time limit exceeded` at `error/cache.c/GetImagePixelCache/1743` on slow decodes (HEIC dominant; jpg/png almost never). Fix: removed bogus `time` policy line entirely (default = truly unlimited) + dropped `thread=4` → `thread=1` (process pool already provides parallelism; nested IM threads = oversubscription).
 
 Verification:
 - Stress: 20× copies of `shelf-christmas-decoration.heic` at `SIMPLEGALLERY_WORKERS=4` → 0/20 → 20/20 success in ~10s.

@@ -176,13 +176,20 @@ class GalleryBuilder:
                 )
         if not stale_specs:
             return
-        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
+        log.info("processing %d image(s)", len(stale_specs))
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=_MP_CTX,
+            initializer=_worker_log_init,
+            initargs=(self.config.log_level,),
+        ) as pool:
             futures = {pool.submit(_image_worker, spec): spec for spec in stale_specs}
             for fut in as_completed(futures):
                 src, _, _ = futures[fut]
                 try:
                     fut.result()
                     self.cache.mark_done(media_by_src[src])
+                    log.info("image done: %s", src)
                 except Exception as exc:
                     log.warning("image failed: %s (%s)", src, exc)
 
@@ -192,7 +199,12 @@ class GalleryBuilder:
         if not images:
             return exif
         workers = max(1, int(self.config.workers))
-        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CTX) as pool:
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=_MP_CTX,
+            initializer=_worker_log_init,
+            initargs=(self.config.log_level,),
+        ) as pool:
             exif_futures = {pool.submit(_exif_worker, m.source): m for m in images}
             for fut in as_completed(exif_futures):
                 media = exif_futures[fut]
@@ -208,24 +220,29 @@ class GalleryBuilder:
     def _process_videos(self, videos: list[MediaFile]) -> None:
         if not videos:
             return
+        stale = [m for m in videos if self.cache.is_stale(m)]
+        if not stale:
+            return
         workers = max(1, int(self.config.workers))
+        log.info("processing %d video(s)", len(stale))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(self._process_video, m): m for m in videos}
+            futures = {pool.submit(self._process_video, m): m for m in stale}
             for fut in as_completed(futures):
                 media = futures[fut]
                 try:
                     fut.result()
+                    log.info("video done: %s", media.source)
                 except Exception as exc:
                     log.warning("video failed: %s (%s)", media.source, exc)
 
     def _process_video(self, media: MediaFile) -> None:
-        if not self.cache.is_stale(media):
-            return
-        assert media.output_mp4 is not None and media.output_webm is not None
+        log.info("processing video: %s", media.source)
         info = video_processor.probe(media.source)
         video_processor.generate_thumbnail(media.source, media.output_thumb, info=info)
-        video_processor.transcode_mp4(media.source, media.output_mp4, info=info)
-        video_processor.transcode_webm(media.source, media.output_webm, info=info)
+        if media.output_mp4 is not None:
+            video_processor.transcode_mp4(media.source, media.output_mp4, info=info)
+        if media.output_webm is not None:
+            video_processor.transcode_webm(media.source, media.output_webm, info=info)
         self.cache.mark_done(media)
 
     @staticmethod
@@ -240,8 +257,28 @@ class GalleryBuilder:
         return out
 
 
+def _worker_log_init(level: int) -> None:
+    """Configure logging in spawned worker processes.
+
+    ProcessPoolExecutor + spawn re-imports modules in child without inheriting
+    the root logger config, so without this each worker would silently drop
+    log records.
+    """
+    import sys
+
+    root = logging.getLogger()
+    if not root.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        root.addHandler(handler)
+    root.setLevel(level)
+
+
 def _image_worker(spec: tuple[Path, Path, Path | None]) -> None:
     src, thumb, full = spec
+    log.info("processing image: %s", src)
     image_processor.generate_thumbnail(src, thumb)
     if full is not None:
         image_processor.generate_full(src, full)

@@ -145,6 +145,7 @@ class DirectoryScanner:
         image_exts = self.config.image_extensions
         video_exts = self.config.video_extensions
         direct_exts = self.config.direct_image_extensions
+        direct_video_exts = self.config.direct_video_extensions
         reserved = self.config.reserved_root_names
 
         subdirs: list[Path] = []
@@ -178,7 +179,10 @@ class DirectoryScanner:
                 continue
             file_slug = slugify(entry.stem, file_slugs)
             file_slugs.add(file_slug)
-            transcode = (kind == "image") and (ext not in direct_exts)
+            if kind == "image":
+                transcode = ext not in direct_exts
+            else:
+                transcode = ext not in direct_video_exts
             original_rel = PurePosixPath(self.config.gallery_subdir) / rel_path / entry.name
             media = self._build_media(
                 source=entry,
@@ -249,8 +253,8 @@ class DirectoryScanner:
             size=size,
             mtime=mtime,
             output_thumb=thumb,
-            output_mp4=output_dir / "video" / f"{slug}.mp4",
-            output_webm=output_dir / "video" / f"{slug}.webm",
-            transcode_needed=False,
+            output_mp4=(output_dir / "video" / f"{slug}.mp4") if transcode_needed else None,
+            output_webm=(output_dir / "video" / f"{slug}.webm") if transcode_needed else None,
+            transcode_needed=transcode_needed,
             original_rel=original_rel,
         )

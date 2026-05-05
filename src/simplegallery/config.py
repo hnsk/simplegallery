@@ -79,6 +79,12 @@ class Config:
     direct_image_extensions: frozenset[str] = field(
         default_factory=lambda: frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"})
     )
+    # Browser-friendly video containers — played directly from the original
+    # under gallery_subdir without re-encoding. Anything in video_extensions
+    # not listed here is transcoded to both mp4 + webm.
+    direct_video_extensions: frozenset[str] = field(
+        default_factory=lambda: frozenset({".mp4", ".webm"})
+    )
 
     def __post_init__(self) -> None:
         if self.web_root is not None:
