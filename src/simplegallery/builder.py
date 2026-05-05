@@ -26,6 +26,29 @@ class GalleryBuilder:
 
     def build_all(self) -> list[Path]:
         """Full build. Returns list of rendered HTML paths (for tests/logging)."""
+        return self._build(selected_names=None, rebuild_index=True)
+
+    def build_galleries(
+        self,
+        names: set[str] | None,
+        rebuild_index: bool = True,
+    ) -> list[Path]:
+        """Partial rebuild.
+
+        names=None → full build (alias for build_all).
+        names=empty set → only re-render index (no per-gallery work).
+        names=non-empty set → process only galleries whose source dir name is in the set;
+        always re-render index when rebuild_index is True.
+        """
+        return self._build(selected_names=names, rebuild_index=rebuild_index)
+
+    # --- internal -------------------------------------------------------
+
+    def _build(
+        self,
+        selected_names: set[str] | None,
+        rebuild_index: bool,
+    ) -> list[Path]:
         self.config.output.mkdir(parents=True, exist_ok=True)
         self.cache.load()
         galleries = self.scanner.scan()
@@ -37,14 +60,24 @@ class GalleryBuilder:
 
         self.renderer.copy_assets()
 
-        images = [m for g in galleries for m in g.images]
+        if selected_names is None:
+            selected = galleries
+        else:
+            selected = [g for g in galleries if g.source_dir.name in selected_names]
+            missing = selected_names - {g.source_dir.name for g in galleries}
+            if missing:
+                log.info("dirty galleries no longer present: %s", sorted(missing))
+
+        images = [m for g in selected for m in g.images]
         exif_by_path = self._process_images(images)
 
-        videos = [m for g in galleries for m in g.videos]
+        videos = [m for g in selected for m in g.videos]
         self._process_videos(videos)
 
-        rendered: list[Path] = [self.renderer.render_index(galleries)]
-        for gallery in galleries:
+        rendered: list[Path] = []
+        if rebuild_index:
+            rendered.append(self.renderer.render_index(galleries))
+        for gallery in selected:
             exif_map = self._exif_for_gallery(gallery, exif_by_path)
             rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
 

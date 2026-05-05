@@ -71,9 +71,10 @@
   - `shell` service — interactive sh for ad-hoc checks (added per CLAUDE.md no-host-Python rule)
 
 ## Step 8 — Watcher
-- [ ] `src/simplegallery/watcher.py` — watchdog `FileSystemEventHandler`; thread-safe dirty-slug set; debounced `threading.Timer` (default 2s) → `builder.build_galleries(dirty_slugs)` + re-render index; handles `DirCreatedEvent` / `DirDeletedEvent` / `DirMovedEvent` on top-level subdirs (rebuild index, prune removed slugs); `WatcherService.start()` blocks on `observer.join()`
-- [ ] Wire `--watch` flag in `__main__.py` → `WatcherService`
-- [ ] `tests/test_watcher.py` — handler unit tests: file event → dirty slug; dir create/delete → index dirty; debounce coalesces bursts
+- [x] `src/simplegallery/watcher.py` — watchdog `FileSystemEventHandler`; thread-safe dirty-name set + index-dirty flag; debounced `threading.Timer` (`config.debounce_seconds`) → `builder.build_galleries(dirty_names)`; handles `DirCreatedEvent` / `DirDeletedEvent` / `DirMovedEvent` on top-level subdirs (mark index dirty, both endpoints for moves); `WatcherService.start()` runs initial `build_all()` then blocks on `observer.join()`
+- [x] `GalleryBuilder.build_galleries(names, rebuild_index=True)` — partial rebuild path; processes only galleries whose source-dir name is in the set; always re-renders index; cache prune still runs for orphan slugs
+- [x] Wire `--watch` flag in `__main__.py` → `WatcherService` (already in place from Step 1 scaffold)
+- [x] `tests/test_watcher.py` — handler unit tests: file event → dirty name; dir create/delete/move → index dirty; debounce coalesces bursts; events outside source / hidden top-level ignored; `WatcherService` end-to-end calls `build_galleries`
 
 ## Test fixtures
 - `sample-data/` — real images (jpg/jpeg/png/heic) + videos (mp4/webm) for ad-hoc verification. Gitignored. Copy/rename into multiple `source/<gallery>/` subdirs to exercise scanner, slug collisions, image+video processors, and gallery output. Do not commit.
