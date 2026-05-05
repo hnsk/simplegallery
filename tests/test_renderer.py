@@ -173,6 +173,39 @@ def test_render_transcoded_image_uses_derivative_for_data_src(cfg: Config) -> No
     assert 'data-original="../gallery/photos/a.heic"' in html
 
 
+def test_render_figure_has_anchor_id_and_link(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    photos = next(g for g in root.subgalleries if g.name == "photos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(photos)
+
+    html = out.read_text(encoding="utf-8")
+    # figure carries a slug-based id for deep linking
+    assert 'id="m-a"' in html
+    assert 'data-slug="a"' in html
+    # browser-friendly jpg gets slug "a-2"; figure linked to its full URL
+    assert 'id="m-a-2"' in html
+    assert '<a class="gallery-link" href="../gallery/photos/a.jpg"' in html
+    # heic transcoded → link points at derivative full/a.jpg
+    assert '<a class="gallery-link" href="full/a.jpg"' in html
+
+
+def test_render_video_figure_link_points_at_video_file(cfg: Config) -> None:
+    root = DirectoryScanner(cfg).scan_tree()
+    assert root is not None
+    videos = next(g for g in root.subgalleries if g.name == "videos")
+    cfg.output.mkdir(parents=True, exist_ok=True)
+    renderer = Renderer(cfg)
+    renderer.copy_assets()
+    out = renderer.render_gallery(videos)
+
+    html = out.read_text(encoding="utf-8")
+    assert '<a class="gallery-link" href="../gallery/videos/clip.mp4"' in html
+
+
 def test_render_video_data_original_points_at_source(cfg: Config) -> None:
     root = DirectoryScanner(cfg).scan_tree()
     assert root is not None

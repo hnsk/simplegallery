@@ -1,10 +1,10 @@
 # NEXT
 
-Step 12 (runtime polish) landed: per-file stdout progress logs + direct-video passthrough so `.mp4`/`.webm` originals are referenced from `gallery/` rather than re-encoded into `web/<rel>/video/`. Suite 111 pass, 1 skip.
+Step 13 (shareable lightbox links) landed: every figure carries `id="m-{slug}"` + `data-slug`; the thumb sits inside `<a class="gallery-link" href="{full|original|video}">` so right-click "copy link" / middle-click / "open in new tab" all yield the full-size media URL. Left-click still opens the lightbox (JS `preventDefault` on plain primary click; modifier keys + non-primary clicks fall through to the browser). Lightbox now drives `location.hash`: pushState on first open, replaceState on prev/next, history.back on close, popstate resyncs (so deep links `…/page#m-slug` auto-open and back-button closes). On close the previously-shown figure is scrolled into view via `scrollIntoView({block:'nearest'})`. Suite 113 pass, 1 skip in docker; smoke verified against `./web/photos/macro/index.html`.
 
 Stale orphan dirs from prior builds (`web/video/`, `web/<sub>/video/`) are not touched by `cache.prune` because the matching cache entries still resolve to the same active sources; rewriting them just shrinks the recorded outputs list. Manual cleanup or a fresh wipe of `web/` (sans `web/gallery/`) recovers the disk space.
 
-Next: pick the deferred mobile-viewport lightbox verify (Step 11 carry-over) or surface a new initiative.
+Next: deferred mobile-viewport lightbox verify (Step 11 carry-over) — swipe + EXIF slide-up sheet + new hash-routing behavior on touch (back gesture, share-link open). Or surface a new initiative.
 
 ---
 

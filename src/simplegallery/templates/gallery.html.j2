@@ -24,7 +24,10 @@
   {% if items %}
   <div class="gallery-grid" data-gallery="{{ gallery.slug }}">
     {% for item in items %}
+    {% set link_href = item.src or item.original or item.mp4 or item.webm or item.thumb %}
     <figure
+      id="m-{{ item.slug }}"
+      data-slug="{{ item.slug }}"
       data-kind="{{ item.kind }}"
       data-thumb="{{ item.thumb }}"
       {% if item.src %}data-src="{{ item.src }}"{% endif %}
@@ -33,7 +36,9 @@
       {% if item.webm %}data-webm="{{ item.webm }}"{% endif %}
       {% if item.exif %}data-exif='{{ item.exif }}'{% endif %}
     >
-      <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy">
+      <a class="gallery-link" href="{{ link_href }}" aria-label="{{ item.name }}">
+        <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy">
+      </a>
     </figure>
     {% endfor %}
   </div>
