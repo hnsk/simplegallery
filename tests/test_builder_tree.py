@@ -1,4 +1,4 @@
-"""GalleryBuilder.build_tree(): recursive build over the web-root layout."""
+"""GalleryBuilder.build_all(): recursive build over the web-root layout."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def cfg(web: Path) -> Config:
 
 
 def test_build_tree_renders_root_and_every_non_empty_subgallery(cfg: Config) -> None:
-    rendered = GalleryBuilder(cfg).build_tree()
+    rendered = GalleryBuilder(cfg).build_all()
     rel = {p.relative_to(cfg.output).as_posix() for p in rendered}
     assert rel == {
         "index.html",
@@ -47,12 +47,12 @@ def test_build_tree_renders_root_and_every_non_empty_subgallery(cfg: Config) -> 
 
 
 def test_build_tree_copies_assets(cfg: Config) -> None:
-    GalleryBuilder(cfg).build_tree()
+    GalleryBuilder(cfg).build_all()
     assert (cfg.output / ASSETS_DIRNAME).is_dir()
 
 
 def test_build_tree_root_uses_gallery_template_with_site_title(cfg: Config) -> None:
-    GalleryBuilder(cfg).build_tree()
+    GalleryBuilder(cfg).build_all()
     html = (cfg.output / "index.html").read_text(encoding="utf-8")
     assert "Site" in html
     assert 'data-gallery="site"' in html
@@ -60,7 +60,7 @@ def test_build_tree_root_uses_gallery_template_with_site_title(cfg: Config) -> N
 
 def test_build_tree_heic_emits_full_jpeg_path_only_for_transcoded(cfg: Config) -> None:
     """HEIC → ``photos/full/a.jpg`` referenced as data-src; jpg has no data-src."""
-    GalleryBuilder(cfg).build_tree()
+    GalleryBuilder(cfg).build_all()
     html = (cfg.output / "photos" / "index.html").read_text(encoding="utf-8")
     # HEIC sorted before jpg by name.lower(); takes slug "a", reserves "full/a.jpg".
     assert 'data-src="full/a.jpg"' in html
@@ -71,7 +71,7 @@ def test_build_tree_heic_emits_full_jpeg_path_only_for_transcoded(cfg: Config) -
 
 
 def test_build_tree_nested_page_uses_gallery_relative_paths(cfg: Config) -> None:
-    GalleryBuilder(cfg).build_tree()
+    GalleryBuilder(cfg).build_all()
     html = (cfg.output / "photos" / "macro" / "index.html").read_text(encoding="utf-8")
     # close.png is browser-friendly: thumb only, no data-src.
     assert 'data-thumb="thumbs/close.webp"' in html
@@ -82,7 +82,7 @@ def test_build_tree_nested_page_uses_gallery_relative_paths(cfg: Config) -> None
 
 
 def test_build_tree_video_outputs_referenced(cfg: Config) -> None:
-    GalleryBuilder(cfg).build_tree()
+    GalleryBuilder(cfg).build_all()
     html = (cfg.output / "videos" / "index.html").read_text(encoding="utf-8")
     # mp4 is browser-friendly → played from gallery original; no webm derivative.
     assert 'data-mp4="../gallery/videos/clip.mp4"' in html
@@ -95,7 +95,7 @@ def test_build_tree_empty_tree_returns_no_pages(tmp_path: Path) -> None:
     web = tmp_path / "web"
     (web / "gallery").mkdir(parents=True)
     cfg = Config(web_root=web)
-    rendered = GalleryBuilder(cfg).build_tree()
+    rendered = GalleryBuilder(cfg).build_all()
     assert rendered == []
     # Assets are still copied so the (empty) output dir is well-formed.
     assert (cfg.output / ASSETS_DIRNAME).is_dir()
@@ -106,15 +106,9 @@ def test_build_tree_skips_empty_branches(tmp_path: Path) -> None:
     _touch(web / "gallery" / "photos" / "a.jpg")
     (web / "gallery" / "deserted").mkdir()
     cfg = Config(web_root=web)
-    rendered = GalleryBuilder(cfg).build_tree()
+    rendered = GalleryBuilder(cfg).build_all()
     rel = {p.relative_to(cfg.output).as_posix() for p in rendered}
     assert "deserted/index.html" not in rel
     assert "photos/index.html" in rel
 
 
-def test_build_all_alias_calls_build_tree(cfg: Config) -> None:
-    a = GalleryBuilder(cfg).build_all()
-    b = GalleryBuilder(cfg).build_tree()
-    assert {p.relative_to(cfg.output).as_posix() for p in a} == {
-        p.relative_to(cfg.output).as_posix() for p in b
-    }

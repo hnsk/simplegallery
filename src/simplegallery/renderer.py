@@ -30,8 +30,12 @@ ASSETS_DIRNAME = "assets"
 HASH_LENGTH = 10
 INDEX_FILENAME = "index.html"
 
-_HASHED_STATIC_FILES = ("gallery.css", "gallery.js")
-_VERBATIM_STATIC_FILES = ("icons/play.svg",)
+_STATIC_FILES: tuple[tuple[str, bool], ...] = (
+    ("gallery.css", True),
+    ("gallery.js", True),
+    ("icons/play.svg", False),
+)
+_HASHED_STATIC_FILES = tuple(name for name, hashed in _STATIC_FILES if hashed)
 
 
 @dataclass(frozen=True)
@@ -68,26 +72,20 @@ class Renderer:
 
         result: dict[str, Asset] = {}
         static_root = resources.files("simplegallery").joinpath("static")
-        for logical in _HASHED_STATIC_FILES:
-            src = static_root.joinpath(logical)
-            data = src.read_bytes()
-            digest = hashlib.sha256(data).hexdigest()[:HASH_LENGTH]
-            stem, _, ext = logical.rpartition(".")
-            hashed_name = f"{stem}.{digest}.{ext}"
-            (assets_dir / hashed_name).write_bytes(data)
-            result[logical] = Asset(
-                logical=logical,
-                rel_output=f"{ASSETS_DIRNAME}/{hashed_name}",
-            )
-        for logical in _VERBATIM_STATIC_FILES:
-            src = static_root.joinpath(logical)
-            data = src.read_bytes()
-            target = assets_dir / logical
+        for logical, hashed in _STATIC_FILES:
+            data = static_root.joinpath(logical).read_bytes()
+            if hashed:
+                digest = hashlib.sha256(data).hexdigest()[:HASH_LENGTH]
+                stem, _, ext = logical.rpartition(".")
+                rel_name = f"{stem}.{digest}.{ext}"
+            else:
+                rel_name = logical
+            target = assets_dir / rel_name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
             result[logical] = Asset(
                 logical=logical,
-                rel_output=f"{ASSETS_DIRNAME}/{logical}",
+                rel_output=f"{ASSETS_DIRNAME}/{rel_name}",
             )
         self._assets = result
         return result

@@ -2,16 +2,54 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 
+from simplegallery import __version__
 from simplegallery.cli import apply_args, build_parser
 from simplegallery.config import DEFAULT_GALLERY_SUBDIR, RESERVED_ROOT_NAMES, Config
 
 
 def _parse(argv: list[str]):
     return build_parser().parse_args(argv)
+
+
+def test_version_present() -> None:
+    assert __version__
+
+
+def test_cli_overrides_config() -> None:
+    ns = _parse(
+        [
+            "--web",
+            "/tmp/site",
+            "--gallery-subdir",
+            "pics",
+            "--title",
+            "Hello",
+            "--watch",
+            "--workers",
+            "8",
+            "-vv",
+        ]
+    )
+    cfg = apply_args(Config.from_env(), ns)
+    assert str(cfg.web_root) == "/tmp/site"
+    assert cfg.gallery_subdir == "pics"
+    assert str(cfg.source) == "/tmp/site/pics"
+    assert str(cfg.output) == "/tmp/site"
+    assert cfg.title == "Hello"
+    assert cfg.watch is True
+    assert cfg.workers == 8
+    assert cfg.log_level == logging.DEBUG
+
+
+def test_default_log_level_info() -> None:
+    ns = _parse([])
+    cfg = apply_args(Config.from_env(), ns)
+    assert cfg.log_level == logging.INFO
 
 
 def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,10 +134,3 @@ def test_apply_args_gallery_subdir(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.source == Path("/tmp/site/pics")
 
 
-def test_apply_args_no_legacy_source_output(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SIMPLEGALLERY_WEB", raising=False)
-    parser = build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--source", "/a"])
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--output", "/b"])

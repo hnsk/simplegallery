@@ -146,14 +146,14 @@ Goal: get the repo publish-ready (PyPI + GitHub). Audit done in session — see 
 - [x] **README.md** — added; documents layout, Docker workflows (build / watch / serve / test), config matrix, GPS-on-direct-originals privacy caveat. Referenced from `pyproject.toml`.
 - [x] **LICENSE** — added MIT, matches `pyproject.toml license = { text = "MIT" }`.
 - [x] **`docker-compose.yml` — default to watch + dev services behind profile** — `app` gains `command: ["--watch", "-v"]` so `docker compose up` runs only the watcher (no `serve`/`shell`/`test` started by default). `test` / `shell` / `serve` moved behind `profiles: ["dev"]`; reachable via `docker compose run --rm <svc>` (run ignores profiles) or `docker compose --profile dev up <svc>`. Host volume mount renamed `SIMPLEGALLERY_WEB_DIR` → `SIMPLEGALLERY_WEB` (default `./web`); inside the container `SIMPLEGALLERY_WEB=/web` stays as the mount target read by `Config.from_env`. README updated.
-- [ ] **Builder dedup** — collapse `build_tree()` + `build_galleries()` into one internal flow (~80% overlap: scan → prune → copy_assets → image_pipeline → exif_batch → videos → render). `build_galleries(None)` and full build differ only by the `(in_scope, to_render)` partition. Drop `build_tree()` alias if `build_all` stays the public name; keep one.
-- [ ] **`__main__.py` scaffolding** — drop `try: from .builder import GalleryBuilder; except ImportError: log.error("not yet implemented (Step N)")` blocks in `_run_build` / `_run_watcher`. Top-level imports + direct calls.
-- [ ] **`cli.parse_args`** — single-line wrapper, single caller (`__main__.main`). Inline.
-- [ ] **`Renderer.copy_assets`** — unify `_HASHED_STATIC_FILES` / `_VERBATIM_STATIC_FILES` loops with one `(logical, hash: bool)` iteration.
-- [ ] **`pyproject.toml`** — add `classifiers`, `[project.urls]` (homepage / repo / issues), `keywords` so PyPI listing isn't sparse.
-- [ ] **CI** — `.github/workflows/test.yml` running `docker compose run --rm test` on push/PR.
-- [ ] **Dockerfile split** — optional builder + runtime stages so production image doesn't carry `[dev]` extras (pytest). Defer if image size not a concern.
-- [ ] **Dev log relocation** — move `TODO.md` + `NEXT.md` under `docs/` (or drop from sdist via `MANIFEST.in`); they're build-process artifacts, not user docs.
-- [ ] **`tests/test_smoke.py`** — strict subset of `tests/test_config.py`. Fold in or delete.
-- [ ] **`tests/test_config.py::test_apply_args_no_legacy_source_output`** — guards against pre-Step-10 flags. Drop once published.
-- [ ] **`SIMPLEGALLERY_DEBOUNCE`** — env-only, no CLI flag. Either add `--debounce` or drop the env var (only relevant in `--watch`).
+- [x] **Builder dedup** — `build_tree()` + `build_galleries()` collapsed into single `build_all(dirty_rels=None)`. Full build when `dirty_rels` is None or empty; partial otherwise. Watcher + tests updated.
+- [x] **`__main__.py` scaffolding** — dropped `try/except ImportError` blocks; top-level imports + direct calls.
+- [x] **`cli.parse_args`** — wrapper removed; `__main__` and tests call `build_parser().parse_args(argv)` directly.
+- [x] **`Renderer.copy_assets`** — `_HASHED_STATIC_FILES` / `_VERBATIM_STATIC_FILES` collapsed into single `_STATIC_FILES = ((logical, hashed), …)` iteration.
+- [x] **`pyproject.toml`** — added `keywords`, `classifiers`, `[project.urls]` (homepage / repo / issues at github.com/hnsk/simplegallery). Author corrected to `Hannu Ylitalo <hannu@ylitalo.eu>`.
+- [ ] **CI** — `.github/workflows/test.yml` running `docker compose run --rm test` on push/PR. Skipped this round.
+- [ ] **Dockerfile split** — optional builder + runtime stages so production image doesn't carry `[dev]` extras (pytest). Deferred — image size not a concern.
+- [x] **Dev log relocation** — `TODO.md` + `NEXT.md` moved under `docs/`.
+- [x] **`tests/test_smoke.py`** — folded into `tests/test_config.py` (`test_version_present`, `test_cli_overrides_config`, `test_default_log_level_info`); file removed.
+- [x] **`tests/test_config.py::test_apply_args_no_legacy_source_output`** — dropped.
+- [x] **`SIMPLEGALLERY_DEBOUNCE`** — added `--debounce` CLI flag (only relevant with `--watch`); env var still honored via `Config.from_env`.

@@ -9,7 +9,21 @@ description = "Static photo and video gallery generator"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "hanski", email = "hanski@gmail.com" }]
+authors = [{ name = "Hannu Ylitalo", email = "hannu@ylitalo.eu" }]
+keywords = ["gallery", "static-site-generator", "photos", "videos", "exif", "watcher"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Video",
+]
 dependencies = [
     "Jinja2>=3.1",
     "Wand>=0.6.13",
@@ -21,6 +35,11 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hnsk/simplegallery"
+Repository = "https://github.com/hnsk/simplegallery"
+Issues = "https://github.com/hnsk/simplegallery/issues"
 
 [project.scripts]
 simplegallery = "simplegallery.__main__:main"

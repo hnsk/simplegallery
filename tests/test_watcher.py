@@ -175,7 +175,7 @@ def test_flush_now_drains_state(src: Path) -> None:
 
 
 def test_watcher_service_partial_rebuild(monkeypatch, src: Path, tmp_path: Path) -> None:
-    """End-to-end: handler flush → builder.build_galleries called with dirty rels."""
+    """End-to-end: handler flush → builder.build_all called with dirty rels."""
     from simplegallery.config import Config
     from simplegallery.watcher import WatcherService
 
@@ -186,12 +186,11 @@ def test_watcher_service_partial_rebuild(monkeypatch, src: Path, tmp_path: Path)
             self.full_calls = 0
             self.partial_calls: list[set[str]] = []
 
-        def build_all(self) -> list[Path]:
-            self.full_calls += 1
-            return []
-
-        def build_galleries(self, dirty_rels):
-            self.partial_calls.append(set(dirty_rels))
+        def build_all(self, dirty_rels=None) -> list[Path]:
+            if dirty_rels is None:
+                self.full_calls += 1
+            else:
+                self.partial_calls.append(set(dirty_rels))
             return []
 
     fake = _FakeBuilder()

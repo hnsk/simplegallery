@@ -30,98 +30,54 @@ class GalleryBuilder:
         )
         self.renderer = Renderer(config)
 
-    def build_all(self) -> list[Path]:
-        """Full build over the recursive web-root layout.
-
-        Returns the list of rendered HTML paths (root + every non-empty
-        subgallery). Empty trees produce no pages.
-        """
-        return self.build_tree()
-
-    def build_tree(self) -> list[Path]:
-        """DFS-walk the source tree, process all media, render every page."""
-        self.config.output.mkdir(parents=True, exist_ok=True)
-        self.cache.load()
-
-        root = self.scanner.scan_tree()
-        if root is None:
-            log.info("no media found in %s", self.config.source)
-            self.renderer.copy_assets()
-            self.cache.prune([])
-            self.cache.save()
-            return []
-
-        galleries = root.walk()
-        log.info(
-            "scanned %d galler%s",
-            len(galleries),
-            "y" if len(galleries) == 1 else "ies",
-        )
-
-        removed = self.cache.prune([root])
-        for path in removed:
-            log.info("pruned: %s", path)
-
-        self.renderer.copy_assets()
-
-        images = [m for g in galleries for m in g.images]
-        self._process_image_pipeline(images)
-        exif_by_path = self._extract_exif_batch(images)
-
-        videos = [m for g in galleries for m in g.videos]
-        self._process_videos(videos)
-
-        rendered: list[Path] = []
-        for gallery in galleries:
-            exif_map = self._exif_for_gallery(gallery, exif_by_path)
-            rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
-
-        self.cache.save()
-        log.info("rendered %d page(s)", len(rendered))
-        return rendered
-
-    def build_galleries(
+    def build_all(
         self,
         dirty_rels: Iterable[str] | None = None,
     ) -> list[Path]:
-        """Partial rebuild scoped to dirty source-dir rel paths.
+        """Build the gallery tree.
 
-        ``dirty_rels`` are POSIX rel paths under ``config.source`` (empty
-        string ``""`` denotes the source root). For each dirty rel:
-          * media inside the rel (and any descendant) is reprocessed
-            (gated by ``cache.is_stale``);
-          * the rel itself plus every ancestor up to root is re-rendered,
-            because ancestor pages show subgallery cards whose own/sub
-            counts depend on their descendants.
-
-        Empty/None ``dirty_rels`` falls back to a full ``build_tree()``.
+        Full build when ``dirty_rels`` is None or empty: every gallery
+        (re)processed and rendered. Otherwise scoped partial rebuild —
+        ``dirty_rels`` are POSIX rel paths under ``config.source`` (``""``
+        denotes the source root); media inside any dirty rel (or
+        descendant) is reprocessed, while the rel plus every ancestor is
+        re-rendered (ancestor pages show subgallery cards whose counts
+        depend on descendants).
         """
-        if dirty_rels is None:
-            return self.build_tree()
-        norm = _normalize_rels(dirty_rels)
-        if not norm:
-            return self.build_tree()
+        norm = _normalize_rels(dirty_rels) if dirty_rels is not None else None
+        partial = bool(norm)
 
         self.config.output.mkdir(parents=True, exist_ok=True)
         self.cache.load()
 
         root = self.scanner.scan_tree()
         if root is None:
+            if not partial:
+                log.info("no media found in %s", self.config.source)
             self.renderer.copy_assets()
             self.cache.prune([])
             self.cache.save()
             return []
 
         galleries = root.walk()
-        in_scope: list[Gallery] = []
-        to_render: list[Gallery] = []
-        for g in galleries:
-            rel = _gallery_rel(g)
-            if _is_dirty_or_descendant(rel, norm):
-                in_scope.append(g)
-                to_render.append(g)
-            elif _is_ancestor_of_dirty(rel, norm):
-                to_render.append(g)
+        if partial:
+            in_scope: list[Gallery] = []
+            to_render: list[Gallery] = []
+            for g in galleries:
+                rel = _gallery_rel(g)
+                if _is_dirty_or_descendant(rel, norm):
+                    in_scope.append(g)
+                    to_render.append(g)
+                elif _is_ancestor_of_dirty(rel, norm):
+                    to_render.append(g)
+        else:
+            in_scope = galleries
+            to_render = galleries
+            log.info(
+                "scanned %d galler%s",
+                len(galleries),
+                "y" if len(galleries) == 1 else "ies",
+            )
 
         removed = self.cache.prune([root])
         for path in removed:
@@ -144,11 +100,14 @@ class GalleryBuilder:
             rendered.append(self.renderer.render_gallery(gallery, exif=exif_map))
 
         self.cache.save()
-        log.info(
-            "partial rebuild: %d dirty rel(s) → rendered %d page(s)",
-            len(norm),
-            len(rendered),
-        )
+        if partial:
+            log.info(
+                "partial rebuild: %d dirty rel(s) → rendered %d page(s)",
+                len(norm),
+                len(rendered),
+            )
+        else:
+            log.info("rendered %d page(s)", len(rendered))
         return rendered
 
     # --- image pipeline -------------------------------------------------

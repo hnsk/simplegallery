@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--workers", type=int, help="Worker thread count for media processing.")
     parser.add_argument(
+        "--debounce",
+        type=float,
+        dest="debounce",
+        help="Watcher debounce window in seconds (only applies with --watch).",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="count",
@@ -58,10 +64,10 @@ def apply_args(config: Config, args: argparse.Namespace) -> Config:
         config.watch = bool(args.watch)
     if args.workers is not None:
         config.workers = args.workers
+    if args.debounce is not None:
+        config.debounce_seconds = args.debounce
     if args.verbose:
         config.log_level = logging.DEBUG if args.verbose >= 2 else logging.INFO
     return config
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)

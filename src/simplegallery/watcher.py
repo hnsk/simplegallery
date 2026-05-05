@@ -193,4 +193,4 @@ class WatcherService:
 
     def _rebuild(self, dirty_rels: set[str]) -> None:
         log.info("rebuild triggered: dirty=%s", sorted(dirty_rels) or "[]")
-        self.builder.build_galleries(dirty_rels)
+        self.builder.build_all(dirty_rels)
